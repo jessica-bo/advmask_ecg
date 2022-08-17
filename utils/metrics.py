@@ -1,4 +1,6 @@
 import torch
+import torch.nn as nn
+import torch.nn.functional as F
 import math
 import numpy as np
 from itertools import combinations
@@ -6,6 +8,11 @@ from sklearn.preprocessing import LabelBinarizer
 from sklearn.metrics import roc_auc_score
 from typing import Dict, List, Sequence
 
+import warnings
+warnings.filterwarnings("ignore")
+
+def evaluate_single(labels_list,outputs_list,classification="normal"):
+    return calculate_auc(outputs_list,labels_list),calculate_acc(outputs_list,labels_list,classification=classification)
 
 def calculate_auc(outputs_list,labels_list):
     """
@@ -16,7 +23,7 @@ def calculate_auc(outputs_list,labels_list):
     all_auc = []
     for i in range(labels_ohe.shape[1]):
         auc = roc_auc_score(labels_ohe[:,i],outputs_list[:,i])
-        print("auc {} of {}".format(auc, i))
+        # print("auc {} of {}".format(auc, i))
         all_auc.append(auc)
     epoch_auroc = np.mean(all_auc)
     return epoch_auroc
@@ -41,16 +48,27 @@ def weighted_mean(outputs: List[Dict], key: str, batch_size_key: str) -> float:
     """Computes the mean of the values of a key weighted by the batch size.
     Args:
         outputs (List[Dict]): list of dicts containing the outputs of a validation step.
-        key (str): key of the metric of interest.
+        key (str): key of the metric of interest.weighted_mean
         batch_size_key (str): key of batch size values.
     Returns:
         float: weighted mean of the values of a key
     """
-
     value = 0
     n = 0
     for out in outputs:
         value += out[batch_size_key] * out[key]
         n += out[batch_size_key]
     value = value / n
-    return value.squeeze(0)
+    return value
+
+
+class Entropy(nn.Module):
+    """
+    Computes the entropy.
+    """
+    def __init__(self):
+        super(Entropy, self).__init__()
+
+    def forward(self, x):
+        b = F.softmax(x, dim=1) * F.log_softmax(x, dim=1)
+        return b.sum()

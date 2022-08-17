@@ -1,150 +1,220 @@
 from argparse import ArgumentParser
 from functools import partial
 from typing import Any, Callable, Dict, List, Sequence, Tuple
-from convnet import ConvNet
+import os, sys
 
 import pytorch_lightning as pl
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+sys.path.append('../utils')
+from utils.losses import simclr_loss_fn
+from utils.metrics import calculate_auc, calculate_acc, weighted_mean, evaluate_single
 
-SUPPORTED_NETWORKS = {
-            "convnet": ConvNet,
-            # "resnet50": resnet50,
-            # "vit_tiny": vit_tiny,
-        }
+sys.path.append('../data')
+from data.cinc2021.utils_cinc2021 import evaluate_scores
 
 class BaseModel(pl.LightningModule):
     def __init__(
         self, 
-        args, 
+        encoder,
+        console_log,
         n_classes,
-        target_type):
+        target_type,
+        max_epochs,
+        batch_size,
+        lr,
+        weight_decay,
+        temperature,
+        proj_hidden_dim,
+        output_dim,
+        positive_pairing,
+        simclr_loss_only,
+        **kwargs):
         super().__init__()
 
+        self.console_log = console_log
+
         self.save_hyperparameters()
-        self.encoder = ConvNet(args)
-        self.classifier = nn.Linear(self.features_size, n_classes)
-        
+        self.encoder = encoder
+
+        self.max_epochs = max_epochs
+        self.temperature = temperature
+        self.lr = lr
+        self.positive_pairing = positive_pairing
+        self.weight_decay = weight_decay
+        self.batch_size = batch_size
         self.target_type = target_type
+        self.simclr_loss_only = simclr_loss_only
 
-        self.metric_keys = ['acc'] if self.target_type == 'single' \
-            else ['f1_macro', 'f1_micro', 'f1_weighted']
-            
-        if self.target_type == '2-way':
-            self.loss_fn = nn.BCEWithLogitsLoss()
-        else:
-            self.target_type = nn.CrossEntropyLoss()
+        # projector
+        self.projector = nn.Sequential(
+            nn.Linear(self.encoder.embedding_dim, proj_hidden_dim),
+            nn.ReLU(),
+            nn.Linear(proj_hidden_dim, output_dim),
+        )
+        
+        self.classifier = nn.Linear(self.encoder.embedding_dim, n_classes)
 
+        self.metric_keys = ['acc', 'auc'] 
+        if target_type == 'multilabel':
+            self.loss_fn = torch.nn.BCELoss() #torch.nn.BCEWithLogitsLoss()#F.binary_cross_entropy_with_logits
+            self.eval_fn = evaluate_scores
+        elif target_type == "single":
+            self.loss_fn = F.cross_entropy
+            self.eval_fn = evaluate_single
+
+        # self.loss_fn = torch.nn.BCEWithLogitsLoss() #F.cross_entropy
+
+    @staticmethod
+    def add_model_specific_args(parent_parser: ArgumentParser) -> ArgumentParser:
+
+        parser = parent_parser.add_argument_group("base")
+
+        # general train
+        parser.add_argument("--batch_size", type=int, default=32)
+        parser.add_argument("--lr", type=float, default=0.1)
+        parser.add_argument("--weight_decay", type=float, default=0)
+        parser.add_argument("--num_workers", type=int, default=10)
+        parser.add_argument("--embedding_dim", type=int, default=512)
+        parser.add_argument("--simclr_loss_only", action='store_true', default=False)
+
+        # wandb
+        parser.add_argument("--name", type=str)
+        parser.add_argument("--project", type=str)
+        parser.add_argument("--entity", type=str)
+        parser.add_argument("--wandb", action='store_true', default=False)
+
+        parser.add_argument("--encoder_name", type=str, default='resnet')
+        parser.add_argument("--output_dim", type=int, default=128)
+        parser.add_argument("--proj_hidden_dim", type=int, default=2048)
+        parser.add_argument('--learning_rate', type=float, default=0.001)
+        parser.add_argument("--temperature", type=float, default=0.1)
+
+        return parent_parser
+
+    def configure_optimizers(self):
+        optimizer = torch.optim.Adam(
+            list(self.encoder.parameters()) + list(self.projector.parameters()) + list(self.classifier.parameters()),
+            lr=self.lr,
+            weight_decay=self.weight_decay,
+        )
+        return optimizer 
 
     def forward(self, x):
         feats = self.encoder(x)
         logits = self.classifier(feats.detach())
-        return {"logits": logits, "feats": feats}
+        z = self.projector(feats)
+        return {"logits": logits, "feats": feats, "z": z}
+        
+    def shared_step(self, X: torch.Tensor, targets: torch.Tensor) -> Dict:
+        batch_size = X.size(0)
 
-    def _shared_step(self, X: torch.Tensor, targets: torch.Tensor) -> Dict:
-        out = self._base_forward(X)
-        logits, feats = out["logits"], out["feats"]
+        out = self.forward(X)
+        logits, feats, z = out["logits"], out["feats"], out["z"]     
+        logits = torch.sigmoid(logits)
 
-        loss = self.loss_fn(logits, targets, **self.loss_args)
-        results = self.metric_fn(logits, targets, **self.metric_args)
+        targets = targets.type(torch.float) if self.target_type == "multilabel" else targets
+        class_loss = self.loss_fn(logits + 1e-10, targets.type(torch.float))
+
+        auc, acc = self.eval_fn(targets.cpu().detach().numpy(), logits.cpu().detach().numpy())
 
         return {
-            "loss": loss,
+            "class_loss": class_loss,
+            "batch_size": batch_size,
             "logits": logits,
             "feats": feats,
-            **results
+            "z": z,
+            "acc": acc,
+            "auc": auc,
         }
 
-    def training_step(self, batch, batch_idx):
-        _, X, targets = batch
+    def training_step(self, batch: Sequence[Any], batch_idx: int) -> torch.Tensor:
+        """Training step for SimCLR and supervised SimCLR reusing BaseModel training step.
+
+        Args:
+            batch (Sequence[Any]): a batch of data in the format of [img_indexes, [X], Y], where
+                [X] is a list of size self.n_crops containing batches of images.
+            batch_idx (int): index of the batch.
+
+        Returns:
+            torch.Tensor: total loss composed of SimCLR loss and classification loss.
+        """
+        X, targets = batch
         targets = targets['labels'] if isinstance(targets, dict) else targets
-        X = [X] if isinstance(X, torch.Tensor) else X
+        outs = [self.shared_step(X[:,:,:,i], targets) for i in range(X.shape[-1])]
+        z1, z2 = [out["z"] for out in outs]
 
-        # check that we received the desired number of crops
-        assert len(X) == self.n_crops + self.n_small_crops
+        classification_loss = sum(out["class_loss"] for out in outs) / 2
+        nce_loss = simclr_loss_fn(latent_embeddings=[z1, z2], 
+                                  positive_pairing=self.positive_pairing, 
+                                  temperature=self.temperature)
+        if self.simclr_loss_only: 
+            loss = nce_loss
+        else:
+            loss = nce_loss + classification_loss
 
-        outs = [self._shared_step(x, targets) for x in X[: self.n_crops]]
-
-        # collect data
-        logits = [out["logits"] for out in outs]
-        feats = [out["feats"] for out in outs]
-
-        # loss and stats
-        loss = sum(out["loss"] for out in outs) / self.n_crops
-        metrics = {"train_class_loss": loss}
-
+        metrics = {
+            "nce_loss": nce_loss,
+            "class_loss": classification_loss,
+            "loss": loss,
+            "batch_size": outs[0]["batch_size"],
+        }
+        
         for key in self.metric_keys:
-            metrics.update({f"train_{key}": sum(out[key] for out in outs) / self.n_crops})
+            metrics.update({f"{key}": sum(out[key] for out in outs) / 2})
 
-        if self.multicrop:
-            feats.extend([self.encoder(x) for x in X[self.n_crops :]])
+        return metrics
 
-        self.log_dict(metrics, on_epoch=True, sync_dist=True)
+    def training_epoch_end(self, outs: List[Dict[str, Any]]):
+        class_loss = weighted_mean(outs, "class_loss", "batch_size")
+        acc = weighted_mean(outs, "acc", "batch_size")
+        auc = weighted_mean(outs, "auc", "batch_size")
+        nce_loss = weighted_mean(outs, "nce_loss", "batch_size")
+        
+        metrics = {"train_class_loss": class_loss, 
+                   "train_acc": acc, 
+                   "train_auc": auc,
+                   "train_nce_loss": nce_loss}
 
-        if not self.disable_knn_eval:
-            self.knn(
-                train_features=torch.cat(outs["feats"][: self.num_crops]).detach(),
-                train_targets=targets.repeat(self.num_crops).detach(),
-            )
-
-        return {"loss": loss, "feats": feats, "logits": logits}
+        self.log_dict(metrics, on_epoch=True, on_step=False, sync_dist=True)
 
     def validation_step(self, batch, batch_idx):
         X, targets = batch
         targets = targets['labels'] if isinstance(targets, dict) else targets
-        batch_size = targets.size(0)
-
-        out = self._shared_step(X, targets)
-
-        if not self.disable_knn_eval and not self.trainer.running_sanity_check:
-            self.knn(test_features=out.pop("feats").detach(), test_targets=targets.detach())
+        out = self.shared_step(X, targets)
 
         metrics = {
-            "batch_size": batch_size,
-            "val_loss": out["loss"]
+            "batch_size": out["batch_size"],
+            "val_class_loss": out["class_loss"],
+            "val_acc": out["acc"],
+            "val_auc": out["auc"]
         }
-        for key in self.metric_keys:
-            metrics.update({f"val_{key}": out[key]})
+        # for key in self.metric_keys:
+        #     metrics.update({f"val_{key}": out[key]})
 
         return metrics
 
-    def test_step(self, batch, batch_idx):
-        x, y = batch
-        y_hat = self(x)
-        loss = F.cross_entropy(y_hat, y)
-        self.log('test_loss', loss)
+    def validation_epoch_end(self, outs: List[Dict[str, Any]]):
+        """Averages the losses and accuracies of all the validation batches.
+        This is needed because the last batch can be smaller than the others,
+        slightly skewing the metrics.
 
-    def configure_optimizers(self):
-        optimizer = torch.optim.Adam(
-            self.learnable_params,
-            lr=self.lr,
-            weight_decay=self.weight_decay,
-            **self.extra_optimizer_args,
-        )
-        return optimizer 
+        Args:
+            outs (List[Dict[str, Any]]): list of outputs of the validation step.
+        """
+        val_class_loss = weighted_mean(outs, "val_class_loss", "batch_size")
+        acc = weighted_mean(outs, "val_acc", "batch_size")
+        auc = weighted_mean(outs, "val_auc", "batch_size")
+        self.console_log.info("Finished validation with accuracy {}, AUC {}".format(acc, auc))
+        
+        metrics = {
+            "val_class_loss": val_class_loss,
+            "val_acc": acc,
+            "val_auc": auc
+        }
+        # for key in self.metric_keys:
+        #     metrics.update({f"val_{key}": weighted_mean(outs, f"val_{key}", "batch_size")})
 
-    @staticmethod
-    def add_model_specific_args(parent_parser: ArgumentParser) -> ArgumentParser:
-        parser = parent_parser.add_argument_group("base")
-        # parser = ArgumentParser(parents=[parent_parser], add_help=False)
-        parser.add_argument("--encoder", choices=SUPPORTED_NETWORKS.keys(), type=str, default='resnet18')
-        parser.add_argument('--hidden_dim', type=int, default=128)
-        parser.add_argument('--learning_rate', type=float, default=0.0001)
-        return parser
-
-    
-    @property
-    def learnable_params(self):
-
-        return [
-            {"name": "encoder", "params": self.encoder.parameters()},
-            {
-                "name": "classifier",
-                "params": self.classifier.parameters(),
-                "lr": self.classifier_lr,
-                "weight_decay": 0,
-            },
-        ]
-
+        self.log_dict(metrics, on_epoch=True, on_step=False, sync_dist=True)

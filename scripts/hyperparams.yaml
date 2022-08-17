@@ -1,0 +1,25 @@
+project_name: 'test'
+run_command: "python main_linear.py --dataset chapman --max_epochs 100 --num_workers 10 --name linear_random_chapman --project advaug_test --entity jessica-bo --wandb"
+project_dir: "/home/gridsan/ybo/advaug/sweeps/"
+monitor: "min"
+poll_interval: 10
+
+hparams:
+  lr:
+    begin: 0.0001
+    end: 0.01
+    random: True
+    log: True
+  weight_decay:
+    begin: 0
+    end: 0.01
+    random: True
+    log: True
+
+slurm_directives:
+  - "-o /home/gridsan/ybo/advaug/scripts/outputs/linear_random_chapman.sh.log-%j "
+  - "-c 20"
+  - "--gres=gpu:volta:1"
+
+environment_commands:
+ - module load anaconda/2022a

@@ -1,5 +1,6 @@
 import argparse
 import os, sys
+from signal import default_int_handler
 import json
 from pytorch_lightning import Trainer
 import pytorch_lightning as pl
@@ -10,14 +11,36 @@ from argparse import Namespace
 
 from model.base_model import BaseModel
 from model.adversarial_model import AdversarialModel
-from model.linear_model import LinearModel
+from model.transfer_model import TransferModel
 
 from utils.checkpointer import Checkpointer
+
+from model.backbones.resnet import resnet1d18
+from model.backbones.convnet import convnet1d
+from model.backbones.transformer import transformer_d2_h4_dim64l
 
 METHODS = {
     "base": BaseModel,
     "adversarial": AdversarialModel,
-    "linear": LinearModel,
+    "transfer": TransferModel,
+}
+
+BACKBONES = {
+    "resnet": resnet1d18,
+    "convnet": convnet1d,
+    "transformer": transformer_d2_h4_dim64l,
+}
+
+NUM_CLASSES = {
+    "chapman": 4, 
+    "cinc2021": 21,
+    "ptbxl": 12,
+}
+
+TARGET_TYPE = {
+    "chapman": "single", 
+    "cinc2021": "multilabel",
+    "ptbxl": "multilabel",
 }
 
 
@@ -33,24 +56,32 @@ def parse_args_pretrain() -> argparse.Namespace:
     """
 
     parser = argparse.ArgumentParser()
-    parser = Trainer.add_argparse_args(parser)
-    # parser = METHODS[temp_args.method].add_model_specific_args(parser)
 
-    parser.add_argument("--train-mode", type=str, default="SimCLR", help="SimCLR, CMSC, CMLC, CMSMLC")
-    parser.add_argument("--trial", type=str, default="Pretrain", help="Pretrain, Linear, Fine-Tuning, Random")
-    parser.add_argument("--dataset", type=str, default="ptbxl", help="ptbxl, chapman")
-    parser.add_argument("--pretrain-dataset", type=str, default="", help="dataset of pretrained model")
-    parser.add_argument("--perturbation", type=str, default="", help="string of pertubations")
-    parser.add_argument("--mask", action="store_true", default=False)
-    parser.add_argument("--thres", type=float, default=0.5)
-    parser.add_argument("--ratio", type=float, default=0.8)
-    parser.add_argument("--nmasks", type=int, default=1)
-    parser.add_argument("--randmask", action="store_true", default=False)
-    parser.add_argument("--gaussian", action="store_true", default=False)
-    parser.add_argument("--randconv", action="store_true", default=False)
-    parser.add_argument("--wandb-disabled", action="store_true", default=False)
-    parser.add_argument("--save-disabled", action="store_true", default=False)
-    parser.add_argument("--max-seed", type=int, default=1)
+    parser = Trainer.add_argparse_args(parser)
+    
+    parser.add_argument("--adversarial", action="store_true", default=False)
+    parser.add_argument("--method", type=str, default="base")
+    parser.add_argument("--positive_pairing", type=str, default="SimCLR")
+    parser.add_argument("--seed", type=int, default=1)
+    parser.add_argument("--num_devices", type=int, default=1)
+    parser.add_argument("--debug", action="store_true", default=False)
+    parser.add_argument("--pretrained_dir", type=str, default=None)
+    parser.add_argument("--checkpoint_dir", type=str, default="/home/gridsan/ybo/advaug/outputs/")
+
+    dataset_args(parser)
+    augmentation_args(parser)
+
+    temp_args, _ = parser.parse_known_args()
+    
+    parser = METHODS[temp_args.method].add_model_specific_args(parser)
+    
+    temp_args, _ = parser.parse_known_args()
+
+    # add checkpointer args (only if logging is enabled)
+    if temp_args.wandb:
+        parser = Checkpointer.add_checkpointer_args(parser)
+    # if temp_args.adversarial:
+    #     adversarial_args(parser)
 
     args = parser.parse_args()
 
@@ -76,17 +107,19 @@ def parse_args_pretrain() -> argparse.Namespace:
         "config": args,
         "project": args.project,
         "entity": args.entity,
-        "dir": args.wandb_dir
+        "dir": os.path.join(args.checkpoint_dir, args.name, "seed{}".format(args.seed))
     }
     if args.name != "none":
         wandb_args["name"] = args.name
 
-    wandb.init(**wandb_args)
-    c = wandb.config
-    
-    return Namespace(**c)
+    os.environ["WANDB_API_KEY"] = "57578f2c085ea7a785a36d8a38adad6d5e3ee3d5"
+    os.environ["WANDB_MODE"] = "offline" if args.wandb else "disabled"
 
-def parse_args_linear() -> argparse.Namespace:
+    wandb.init(**wandb_args)
+
+    return args
+
+def parse_args_transfer():
     """Parses args for linear training, i.e. feature extractor.
 
     Returns:
@@ -96,6 +129,12 @@ def parse_args_linear() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
 
     parser.add_argument("--pretrained_feature_extractor", type=str, default=None)
+    parser.add_argument("--finetune", action="store_true", default=False)
+    parser.add_argument("--debug", action="store_true", default=False)
+    parser.add_argument("--seed", type=int, default=1)
+    parser.add_argument("--backbone", type=str, default="resnet")
+    parser.add_argument("--checkpoint_dir", type=str, default="/home/gridsan/ybo/advaug/outputs/")
+
 
     # add shared arguments
     dataset_args(parser)
@@ -104,7 +143,7 @@ def parse_args_linear() -> argparse.Namespace:
     parser = pl.Trainer.add_argparse_args(parser)
 
     # linear model
-    parser = METHODS["linear"].add_model_specific_args(parser)
+    parser = METHODS["transfer"].add_model_specific_args(parser)
 
     # THIS LINE IS KEY TO PULL WANDB
     temp_args, _ = parser.parse_known_args()
@@ -120,86 +159,64 @@ def parse_args_linear() -> argparse.Namespace:
         "config": args,
         "project": args.project,
         "entity": args.entity,
-        "dir": args.wandb_dir
+        "dir": os.path.join(args.checkpoint_dir, args.name, "seed{}".format(args.seed))
     }
     if args.name != "none":
         wandb_args["name"] = args.name
 
+    os.environ["WANDB_API_KEY"] = "57578f2c085ea7a785a36d8a38adad6d5e3ee3d5"
+    os.environ["WANDB_MODE"] = "offline" if args.wandb else "disabled"
+
     wandb.init(**wandb_args)
-    c = wandb.config
-
-    return Namespace(**c)
-
-def parse_args_finetune() -> argparse.Namespace:
-    """Parses args for finetuning, including feature extractor, and validation frequency.
-
-    Returns:
-        argparse.Namespace: a namespace containing all args needed for finetuning.
-    """
-
-    parser = argparse.ArgumentParser()
-
-    parser.add_argument("--pretrained_feature_extractor", type=str)
-    parser.add_argument("--validation_frequency", type=int, default=1)
-
-    # add shared arguments
-    dataset_args(parser)
-
-    # add pytorch lightning trainer args
-    parser = pl.Trainer.add_argparse_args(parser)
-
-    # linear model
-    parser = METHODS["supervised"].add_model_specific_args(parser)
-
-    # THIS LINE IS KEY TO PULL WANDB
-    temp_args, _ = parser.parse_known_args()
-
-    # add checkpointer args (only if logging is enabled)
-    # if temp_args.wandb:
-    #     parser = Checkpointer.add_checkpointer_args(parser)
-
-    # parse args
-    args = parser.parse_args()
 
     return args
 
 def dataset_args(parser):
-    """Adds dataset-related arguments to a parser.
-
-    Args:
-        parser (ArgumentParser): parser to add dataset args to.
-    """
 
     parser.add_argument("--dataset", type=str)
+    parser.add_argument("--data_dir", type=str, default="/home/gridsan/ybo/advaug/data/")
 
-    # dataset path
-    parser.add_argument("--data_dir", type=str)
-    parser.add_argument("--train_dir", type=str, default=None)
-    parser.add_argument("--val_dir", type=str, default=None)
+def augmentation_args(parser):
+    # Gaussian
+    parser.add_argument("--gaussian", action="store_true", default=False)
+    parser.add_argument("--gaussian_sigma", type=float, default=0.05)
 
-def augmentations_args(parser):
-    """Adds augmentation-related arguments to a parser.
+    # BaselineWander
+    parser.add_argument("--wander", action="store_true", default=False)
 
-    Args:
-        parser (ArgumentParser): parser to add augmentation args to.
-    """
+    # BaselineShift
+    parser.add_argument("--shift", action="store_true", default=False)
 
-    # cropping
-    parser.add_argument("--n_crops", type=int, default=2)
-    parser.add_argument("--n_small_crops", type=int, default=0)
+    # PowerlineNoise
+    parser.add_argument("--powerline", action="store_true", default=False)
 
-    # augmentations
-    parser.add_argument("--brightness", type=float, nargs="+", default=[0.8])
-    parser.add_argument("--contrast", type=float, nargs="+", default=[0.8])
-    parser.add_argument("--saturation", type=float, nargs="+", default=[0.8])
-    parser.add_argument("--hue", type=float, nargs="+", default=[0.2])
-    parser.add_argument("--gaussian_prob", type=float, default=[0.5], nargs="+")
-    parser.add_argument("--solarization_prob", type=float, default=[0.0], nargs="+")
-    parser.add_argument("--min_scale", type=float, default=[0.08], nargs="+")
+    # EMGNoise
+    parser.add_argument("--emg", action="store_true", default=False)
 
-    # for imagenet or custom dataset
-    parser.add_argument("--size", type=int, default=[224], nargs="+")
+    # RandomLeadMask
+    parser.add_argument("--rlm", action="store_true", default=False)
+    parser.add_argument("--rlm_prob", type=float, default=0.5)
 
-    # for custom dataset
-    parser.add_argument("--mean", type=float, default=[0.485, 0.456, 0.406], nargs="+")
-    parser.add_argument("--std", type=float, default=[0.228, 0.224, 0.225], nargs="+")
+    # RandomMask
+    parser.add_argument("--mask", action="store_true", default=False)
+    parser.add_argument("--mask_ratio", type=float, default=0.2)
+
+    # RandomBlockMask
+    parser.add_argument("--blockmask", action="store_true", default=False)
+    parser.add_argument("--blockmask_ratio", type=float, default=0.2)
+
+    # 3KG
+    parser.add_argument("--threeKG", action="store_true", default=False)
+    parser.add_argument("--threeKG_angle", type=int, default=45)
+    parser.add_argument("--threeKG_scale", type=float, default=1.5)
+    parser.add_argument("--threeKG_mask", type=float, default=0)
+
+
+def arversarial_augs(parser):
+    parser.add_argument("--advmask", action="store_true", default=False)
+    parser.add_argument("--advmask_ratio", type=float, default=0.2)
+
+    parser.add_argument("--advfourier", action="store_true", default=False)
+    parser.add_argument("--advfourier_ratio", type=float, default=0.2)
+
+

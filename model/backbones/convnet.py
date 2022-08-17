@@ -10,14 +10,15 @@ k=7 #kernel size #7
 s=3 #stride #3
 #num_classes = 3
 
-class ConvNet(nn.Module):
+class convnet1d(nn.Module):
     
     """ CNN for Self-Supervision """
     
-    def __init__(self,dropout_type,p1,p2,p3,nencoders=1,embedding_dim=256,trial='',device=''):
-        super(ConvNet,self).__init__()
+    def __init__(self, dropout_type="drop1d", p1=0.1, p2=0.1, p3=0.1, embedding_dim=512, trial='', **kwargs):
+        super(convnet1d,self).__init__()
         
         self.embedding_dim = embedding_dim
+        print("ConvNet with embedding dim {}".format(self.embedding_dim))
         
         if dropout_type == 'drop1d':
             self.dropout1 = nn.Dropout(p=p1) #0.2 drops pixels following a Bernoulli
@@ -32,29 +33,30 @@ class ConvNet(nn.Module):
         self.selu = nn.SELU()
         self.maxpool = nn.MaxPool1d(2)
         self.trial = trial
-        self.device = device
+        self.name ="convnet"
         
-        self.view_modules = nn.ModuleList()
-        self.view_linear_modules = nn.ModuleList()
-        for n in range(nencoders):
-            self.view_modules.append(nn.Sequential(
-            nn.Conv1d(c1,c2,k,s),
-            nn.BatchNorm1d(c2),
-            nn.ReLU(),
-            nn.MaxPool1d(2),
-            self.dropout1,
-            nn.Conv1d(c2,c3,k,s),
-            nn.BatchNorm1d(c3),
-            nn.ReLU(),
-            nn.MaxPool1d(2),
-            self.dropout2,
-            nn.Conv1d(c3,c4,k,s),
-            nn.BatchNorm1d(c4),
-            nn.ReLU(),
-            nn.MaxPool1d(2),
-            self.dropout3
-            ))
-            self.view_linear_modules.append(nn.Linear(c4*10,self.embedding_dim))
+        # self.view_modules = nn.ModuleList()
+        # self.view_linear_modules = nn.ModuleList()
+
+        self.view_modules = (nn.Sequential(
+                             nn.Conv1d(c1,c2,k,s),
+                             nn.BatchNorm1d(c2),
+                             nn.ReLU(),
+                             nn.MaxPool1d(2),
+                             self.dropout1,
+                             nn.Conv1d(c2,c3,k,s),
+                             nn.BatchNorm1d(c3),
+                             nn.ReLU(),
+                             nn.MaxPool1d(2),
+                             self.dropout2,
+                             nn.Conv1d(c3,c4,k,s),
+                             nn.BatchNorm1d(c4),
+                             nn.ReLU(),
+                             nn.MaxPool1d(2),
+                             self.dropout3
+                             ))
+        self.view_linear_modules = nn.Linear(c4*22,self.embedding_dim)
+
                         
     def forward(self,x):
         """ Forward Pass on Batch of Inputs 
@@ -63,31 +65,11 @@ class ConvNet(nn.Module):
         Outputs:
             h (torch.Tensor): latent embedding for each of the N views (BxHxN)
         """
-        batch_size = x.shape[0]
-        nsamples = x.shape[2]
-        nviews = x.shape[3]
-        # print("x shape {}".format(x.shape))
-        # print("nsamples {}".format(nsamples))
-        # print("nviews {}".format(nviews))
-        # nviews = x.shape[2]
-        latent_embeddings = torch.empty(batch_size,self.embedding_dim,nviews,device=self.device)
-        for n in range(nviews):       
-            """ Obtain Inputs From Each View """
-            h = x[:,:,:,n]
-            # h = x[:,:,n]
-            
-            if self.trial == 'CMC':
-                h = self.view_modules[n](h) #nencoders = nviews
-                h = torch.reshape(h,(h.shape[0],h.shape[1]*h.shape[2]))
-                h = self.view_linear_modules[n](h)
-            else:
-                h = self.view_modules[0](h) #nencoder = 1 (used for all views)
-                h = torch.reshape(h,(h.shape[0],h.shape[1]*h.shape[2]))
-                h = self.view_linear_modules[0](h)
-
-            latent_embeddings[:,:,n] = h
+        x = self.view_modules(x) #nencoder = 1 (used for all views)
+        x = torch.reshape(x,(x.shape[0],x.shape[1]*x.shape[2]))
+        x = self.view_linear_modules(x)
         
-        return latent_embeddings
+        return x
 
 class second_cnn_network(nn.Module):
     
