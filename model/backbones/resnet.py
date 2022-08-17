@@ -125,20 +125,24 @@ class ResNet1d(nn.Module):
         block: Type[Union[BasicBlock1d, Bottleneck1d]],
         layers: List[int],
         num_lead: int = 12,
-        backbone_out_dim: int = 512,
+        embedding_dim: int = 512,
         zero_init_residual: bool = False,
         groups: int = 1,
         width_per_group: int = 64,
         replace_stride_with_dilation: Optional[List[bool]] = None,
-        norm_layer: Optional[Callable[..., nn.Module]] = None
+        norm_layer: Optional[Callable[..., nn.Module]] = None,
+        **kwargs
     ) -> None:
         super(ResNet1d, self).__init__()
         if norm_layer is None:
             norm_layer = nn.BatchNorm1d
         self._norm_layer = norm_layer
+        self.embedding_dim = embedding_dim
+        print("Resnet with embedding dim {}".format(self.embedding_dim))
 
         self.inplanes = 64
         self.dilation = 1
+        self.name = "resnet"
         if replace_stride_with_dilation is None:
             # each element in the tuple indicates if we should replace
             # the 2x2 stride with a dilated convolution instead
@@ -161,7 +165,7 @@ class ResNet1d(nn.Module):
         self.layer4 = self._make_layer(block, 512, layers[3], stride=2,
                                        dilate=replace_stride_with_dilation[2])
         self.avgpool = nn.AdaptiveAvgPool1d(1)
-        self.fc = nn.Linear(512 * block.expansion, backbone_out_dim)
+        self.fc = nn.Linear(512 * block.expansion, self.embedding_dim)
 
         for m in self.modules():
             if isinstance(m, nn.Conv1d):

@@ -3,7 +3,9 @@ __pycache__/
 *.py[cod]
 *$py.class
 data/
-
+outputs/
+advaug.code-workspace
+test*
 # C extensions
 *.so
 

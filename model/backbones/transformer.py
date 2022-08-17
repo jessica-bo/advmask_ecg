@@ -119,9 +119,12 @@ class TransformerModel(nn.Module):
         embed_mode: str,
         num_lead: int = 12,
         chunk_len: int = 50,
-        backbone_out_dim: int = 512,
+        embedding_dim: int = 512,
+        **kwargs,
     ) -> None:
         super(TransformerModel, self).__init__()
+        self.embedding_dim = embedding_dim
+        print("Transformer with embedding dim {}".format(self.embedding_dim))
 
         if embed_mode == "linear":
             self.embed = LinearEmbed(num_lead, chunk_len, d_model)
@@ -137,14 +140,16 @@ class TransformerModel(nn.Module):
         self.transformer_encoder = nn.TransformerEncoder(
             encoder_layer, num_layers=num_layers)
 
-        self.fc = nn.Linear(d_model, backbone_out_dim)
+        self.fc = nn.Linear(d_model, self.embedding_dim)
+
+        self.name = "transformer"
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
         Args:
             x (torch.Tensor): Tensor of size (batch_size, num_lead, seqlen).
         Returns:
-            feat (torch.Tensor): Tensor of size (batch_size, backbone_out_dim).
+            feat (torch.Tensor): Tensor of size (batch_size, embedding_dim).
         """
 
         feat = self.embed(x)
