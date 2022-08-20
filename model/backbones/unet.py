@@ -83,6 +83,7 @@ class unet1Dsmall(nn.Module):
         self.input_dim = input_dim
         self.embedding_dim = embedding_dim
         self.kernel_size = 5
+
         self.depth = depth
         self.nmasks = nmasks
         
@@ -91,7 +92,7 @@ class unet1Dsmall(nn.Module):
         self.layer1 = self.down_layer(self.input_dim, self.embedding_dim, self.kernel_size, 1, self.depth)
         self.layer2 = self.down_layer(self.embedding_dim, int(self.embedding_dim*2), self.kernel_size, 5, self.depth)
         self.layer3 = self.down_layer(int(self.embedding_dim*2)+int(self.input_dim), int(self.embedding_dim*3), self.kernel_size, 5, self.depth)
-        
+
         self.cbr_up2 = conbr_block(int(self.embedding_dim*5), int(self.embedding_dim*2), self.kernel_size, 1, 1)
         self.cbr_up3 = conbr_block(int(self.embedding_dim*3), self.embedding_dim, self.kernel_size, 1, 1)
         self.upsample = nn.Upsample(scale_factor=5, mode='nearest')
@@ -127,6 +128,7 @@ class unet1Dsmall(nn.Module):
         # out = torch.sigmoid(out)
         if self.nmasks == 1:
             out = torch.sigmoid(out)
+
         else:
             out = nn.functional.softmax(out, dim=1) # dim=1 is across the 12 leads 
         
@@ -138,6 +140,7 @@ class conbr_block(nn.Module):
         super(conbr_block, self).__init__()
 
         self.conv1 = nn.Conv1d(in_layer, out_layer, kernel_size=kernel_size, stride=stride, dilation=dilation, padding=2, bias=True)
+
         self.bn = nn.BatchNorm1d(out_layer)
         self.relu = nn.ReLU()
     

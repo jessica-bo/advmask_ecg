@@ -45,6 +45,7 @@ class BaseModel(pl.LightningModule):
         self.max_epochs = max_epochs
         self.temperature = temperature
         self.lr = lr * self.accumulate_grad_batches
+
         self.positive_pairing = positive_pairing
         self.weight_decay = weight_decay
         self.batch_size = batch_size

@@ -5,6 +5,7 @@ https://vsoch.github.io/lessons/sherlock-jobs/
 
 import os
 
+
 num_devices = 1
 simclr_loss_flag = "" #"--simclr_loss_only"  # ""
 
@@ -79,4 +80,3 @@ for seed in seeds:
                                                                             batch_size, accumulate_grad_batch, embedding_dim, augmentation, mask_ratio))
 
                             os.system("sbatch %s" %job_file)
-

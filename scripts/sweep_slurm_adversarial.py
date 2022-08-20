@@ -8,6 +8,7 @@ import os
 num_devices = 1
 output_directory = "/home/gridsan/ybo/advaug/outputs/"
 sweep_name = "pretrain/adversarial_cinc2021_resnet" # "pretrain_chapman_resnet_augmentations" # 
+
 job_directory = os.path.join(output_directory, sweep_name)
 
 # Make top level directories
@@ -83,4 +84,3 @@ for seed in seeds:
                                                                             train_mask_interval, alpha_sparsity, ratio))
 
                                     os.system("sbatch %s" %job_file)
-

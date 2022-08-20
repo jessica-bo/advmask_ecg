@@ -52,8 +52,7 @@ def parse_args_pretrain() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
 
     parser = Trainer.add_argparse_args(parser)
-    
-    # parser.add_argument("--adversarial", action="store_true", default=False)
+
     parser.add_argument("--method", type=str, default="base")
     parser.add_argument("--positive_pairing", type=str, default="SimCLR")
     parser.add_argument("--seed", type=int, default=1)
@@ -62,6 +61,7 @@ def parse_args_pretrain() -> argparse.Namespace:
     parser.add_argument("--pretrained_dir", type=str, default=None)
     parser.add_argument("--checkpoint_dir", type=str, default="/home/gridsan/ybo/advaug/outputs/")
     parser.add_argument("--tune", action="store_true", default=False)
+
 
     dataset_args(parser)
     augmentation_args(parser)

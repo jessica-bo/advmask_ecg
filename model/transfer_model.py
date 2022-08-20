@@ -8,6 +8,9 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+import logging
+logging.basicConfig(level=logging.NOTSET)
+
 sys.path.append('../utils')
 from utils.metrics import weighted_mean, evaluate_single
 

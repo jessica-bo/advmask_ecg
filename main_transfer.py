@@ -27,9 +27,7 @@ logging.config.dictConfig({
 def main():
     args = parse_args_transfer()
     seed_everything(args.seed)
-
-    # console_log = logging.getLogger("Lightning")
-    # console_log.info(" Beginning transfer main() with seed {} and arguments \n {}: \n".format(args.seed, args))
+    print(" Beginning transfer main() with seed {} and arguments \n {}: \n".format(args.seed, args))
 
     if args.pretrained_feature_extractor is not None:
         # build paths
@@ -84,6 +82,7 @@ def main():
     # wandb logging
     if args.wandb:
         print("Initiating WandB configs.")
+
         wandb_logger = WandbLogger(
             name=args.name, project=args.project, entity=args.entity, offline=True
         )
@@ -115,6 +114,7 @@ def main():
         profiler="simple",
     )
     print(" Created Lightning Trainer and starting training.")
+
 
     trainer.fit(model=model, datamodule=data_module)
     trainer.test(model=model, datamodule=data_module)

@@ -5,6 +5,7 @@ export LANG=C.UTF-8
 for d in /home/gridsan/ybo/advaug/outputs/transfer/linear/adversarial_chapman/* ; do
     echo "$d/wandb"
     python -m wandb sync --include-offline $d/seed0/wandb/offline-*
+
     # mv ${d} ${d/lr0.0001_bs256/lr0.0001_bs32}
     # mv "$d" "${d/_h.png/_half.png}"
 

@@ -23,6 +23,7 @@ from data.cinc2021.utils_cinc2021 import evaluate_scores
 
 from .backbones import BACKBONES
 
+
 class AdversarialModel(BaseModel):
     def __init__(
         self, 
@@ -74,7 +75,7 @@ class AdversarialModel(BaseModel):
         self.positive_pairing = positive_pairing
         self.weight_decay = weight_decay
         self.batch_size = batch_size
-
+        
         self.ratio = ratio
         self.train_mask_interval = train_mask_interval
         self.alpha1 = alpha_sparsity
@@ -251,7 +252,6 @@ class AdversarialModel(BaseModel):
             batch (Sequence[Any]): a batch of data in the format of [img_indexes, [X], Y], where
                 [X] is a list of size self.n_crops containing batches of images.
         """
-
         mask_nce_loss, masks = self.encoder_forward(batch, actual_batch_size, log_image)
 
         # compute mask penalty
@@ -277,6 +277,7 @@ class AdversarialModel(BaseModel):
 
             final_mask = 1 - mask
             final_mask = final_mask.detach().cpu().numpy()
+
             for j in range(5000-1):
                 if final_mask[j] == 0:
                     plt.axvspan(j, j+1, ymin=0, ymax=1, alpha=0.7,zorder=10)
