@@ -12,7 +12,7 @@ from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 
 from model.transfer_model import TransferModel
 from utils.checkpointer import Checkpointer
-from setup import parse_args_pretrain, METHODS, NUM_CLASSES, BACKBONES, TARGET_TYPE
+from setup import parse_args_pretrain, METHODS, NUM_CLASSES, TARGET_TYPE
 
 from data.datamodule import ECGDataModule
 
@@ -33,12 +33,8 @@ def main():
 
     callbacks = []
 
-    encoder = BACKBONES[args.encoder_name](**vars(args))
-
     MethodClass = METHODS[args.method]
-    model = MethodClass(encoder=encoder, 
-                        # console_log=console_log, 
-                        n_classes=NUM_CLASSES[args.dataset], 
+    model = MethodClass(n_classes=NUM_CLASSES[args.dataset], 
                         target_type=TARGET_TYPE[args.dataset], 
                         **args.__dict__)
                         

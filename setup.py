@@ -25,12 +25,6 @@ METHODS = {
     "transfer": TransferModel,
 }
 
-BACKBONES = {
-    "resnet": resnet1d18, # Params 4,111,488
-    "convnet": convnet1d,
-    "transformer": transformer_d2_h4_dim64l,
-}
-
 NUM_CLASSES = {
     "chapman": 4, 
     "cinc2021": 21,

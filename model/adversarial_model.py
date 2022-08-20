@@ -21,10 +21,12 @@ from .backbones.unet import unet1Dsmall, unet1D
 sys.path.append('../data')
 from data.cinc2021.utils_cinc2021 import evaluate_scores
 
+from .backbones import BACKBONES
+
 class AdversarialModel(BaseModel):
     def __init__(
         self, 
-        encoder,
+        encoder_name,
         n_classes,
         target_type,
         max_epochs,
@@ -45,7 +47,7 @@ class AdversarialModel(BaseModel):
         **kwargs):
         
         super().__init__(
-            encoder,
+            encoder_name,
             n_classes,
             target_type,    
             max_epochs,
@@ -61,9 +63,11 @@ class AdversarialModel(BaseModel):
             **kwargs)
 
         self.save_hyperparameters()
+        self.encoder_name = encoder_name
+        self.encoder = BACKBONES[self.encoder_name](**kwargs)
+        print("Loaded {} backbone.".format(self.encoder_name))
 
         self.accumulate_grad_batches = 1 if accumulate_grad_batches==None else accumulate_grad_batches
-        self.encoder = encoder
         self.max_epochs = max_epochs
         self.temperature = temperature
         self.lr = lr * self.accumulate_grad_batches
@@ -176,7 +180,9 @@ class AdversarialModel(BaseModel):
             log_image = True if batch_idx==0 else False
             self.flip_grad(status=False)
             mask_nce_loss, mask_loss = self.mask_forward(batch, batch_size, log_image)
-            combined_mask_loss = -(mask_nce_loss+mask_loss) / self.accumulate_grad_batches
+
+            # Maximize NCE loss == make dissimilar and minimize mask enforced loss 
+            combined_mask_loss = (-mask_nce_loss + mask_loss) / self.accumulate_grad_batches
             self.manual_backward(combined_mask_loss) 
             if (batch_idx + 1) % self.accumulate_grad_batches==0:
                 opt_m.step()
@@ -250,8 +256,8 @@ class AdversarialModel(BaseModel):
 
         # compute mask penalty
         mask_penalty = masks.sum([-1]) / 5000
-        mask_loss = -(self.alpha1 * (1 / (torch.sin(self.ratio + mask_penalty * np.pi) + 1e-10)).mean(0).sum(0))
-        mask_loss += (self.alpha2 * self.entropy(mask_penalty))
+        mask_loss = (self.alpha1 * (1 / (torch.sin(self.ratio * mask_penalty * np.pi) + 1e-10)).mean(0).sum(0))
+        # mask_loss += (self.alpha2 * self.entropy(mask_penalty))
 
         return mask_nce_loss, mask_loss
 

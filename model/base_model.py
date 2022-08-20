@@ -15,10 +15,12 @@ from utils.metrics import calculate_auc, calculate_acc, weighted_mean, evaluate_
 sys.path.append('../data')
 from data.cinc2021.utils_cinc2021 import evaluate_scores
 
+from .backbones import BACKBONES
+
 class BaseModel(pl.LightningModule):
     def __init__(
         self, 
-        encoder,
+        encoder_name,
         n_classes,
         target_type,
         max_epochs,
@@ -35,8 +37,10 @@ class BaseModel(pl.LightningModule):
         super().__init__()
 
         self.save_hyperparameters()
-        self.encoder = encoder
-
+        self.encoder_name = encoder_name
+        self.encoder = BACKBONES[self.encoder_name](**kwargs)
+        print("Loaded {} backbone.".format(self.encoder_name))
+                        
         self.accumulate_grad_batches = 1 if accumulate_grad_batches==None else accumulate_grad_batches
         self.max_epochs = max_epochs
         self.temperature = temperature

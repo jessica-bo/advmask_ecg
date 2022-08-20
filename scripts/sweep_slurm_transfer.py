@@ -5,80 +5,76 @@ https://vsoch.github.io/lessons/sherlock-jobs/
 
 import os
 
-seed = 10
 output_directory = "/home/gridsan/ybo/advaug/outputs/"
 dataset = "chapman"
-trial = "finetune"
-sweep_name = "{}_pretrained_{}".format(trial, dataset)
-finetune_flag = "--finetune" if trial=="finetune" else ""
+pretrain_path = "/home/gridsan/ybo/advaug/outputs/pretrain/adversarial_cinc2021_resnet"
+pretrained_feature_extractors = [ item for item in os.listdir(pretrain_path) if os.path.isdir(os.path.join(pretrain_path, item)) ]
 
-job_directory = os.path.join(output_directory, sweep_name)
-if not os.path.exists(job_directory):
-    os.mkdir(job_directory)
-
+seeds = [0, 1, 10, 42]
 lrs = [0.001] #, 0.0001]
 batch_sizes = [256] #, 256]
 backbones = ['resnet']
 embedding_dims = [1024] #, 512, 1024]
 
-pretrained_feature_extractors = ['lr0.0001_bs256_resnet1024--blockmask',
-                                 'lr0.0001_bs256_resnet1024--emg',
-                                 'lr0.0001_bs256_resnet1024--gaussian',
-                                 'lr0.0001_bs256_resnet1024--mask',
-                                 'lr0.0001_bs256_resnet1024--powerline',
-                                 'lr0.0001_bs256_resnet1024--rlm',
-                                 'lr0.0001_bs256_resnet1024--shift',
-                                 'lr0.0001_bs256_resnet1024--threeKG',
-                                 'lr0.0001_bs256_resnet1024--wander',]
+trials = ["linear", "finetune"]
 
-for lr in lrs:
-    for batch_size in batch_sizes:
-        for backbone in backbones: 
-            for embedding_dim in embedding_dims:
-                for pretrained_feature_extractor in pretrained_feature_extractors:
+for trial in trials:
+    sweep_name = "transfer/{}/adversarial_{}".format(trial, dataset)
+    finetune_flag = "--finetune" if trial=="finetune" else ""
 
-                    hyperparams_name = "{}".format(pretrained_feature_extractor)                
-                    pretrained_feature_extractor = os.path.join("/home/gridsan/ybo/advaug/outputs/pretrain_cinc2021_resnet", pretrained_feature_extractor, "seed{}".format(seed))
+    job_directory = os.path.join(output_directory, sweep_name)
+    if not os.path.exists(job_directory):
+        os.mkdir(job_directory)
 
-                    # hyperparams_name = "lr{}_bs{}_resnet{}".format(lr, batch_size, embedding_dim, )
+    for seed in seeds: 
+        for lr in lrs:
+            for batch_size in batch_sizes:
+                for backbone in backbones: 
+                    for embedding_dim in embedding_dims:
+                        for pretrained_feature_extractor in pretrained_feature_extractors:
 
-                    job_path = os.path.join(job_directory, hyperparams_name)
-                    job_file = os.path.join(job_path, "sweep_job.sh")
+                            hyperparams_name = "{}".format(pretrained_feature_extractor)                
+                            pretrained_feature_extractor = os.path.join(pretrain_path, pretrained_feature_extractor, "seed{}".format(seed))
 
-                    # Create lizard directories
-                    if not os.path.exists(job_path):
-                        os.mkdir(job_path)
+                            # hyperparams_name = "lr{}_bs{}_resnet{}".format(lr, batch_size, embedding_dim, )
 
-                    job_seed_path = os.path.join(job_path, "seed{}".format(seed))
-                    
-                    if not os.path.exists(job_seed_path):
-                        os.mkdir(job_seed_path)
-                        print(job_seed_path)
-                        job_file = os.path.join(job_seed_path, "sweep_job.sh")
-                    else:
-                        continue
+                            job_path = os.path.join(job_directory, hyperparams_name)
+                            job_file = os.path.join(job_path, "sweep_job.sh")
 
-                    with open(job_file, 'w') as fh:
-                        fh.writelines("#!/bin/sh\n")
-                        fh.writelines("#SBATCH -o {}/run_log.sh.log-%j \n".format(job_seed_path))
-                        fh.writelines("#SBATCH -c 20 \n")
-                        fh.writelines("#SBATCH --gres=gpu:volta:1 \n")
+                            # Create lizard directories
+                            if not os.path.exists(job_path):
+                                os.mkdir(job_path)
 
-                        # --finetune \
-                        fh.writelines("python /home/gridsan/ybo/advaug/main_transfer.py \
-                                    --seed {} \
-                                    {} \
-                                    --dataset {} \
-                                    --max_epochs 150 \
-                                    --num_workers 10 \
-                                    --name {}/{} \
-                                    --project advaug_test \
-                                    --entity jessica-bo \
-                                    --wandb \
-                                    --lr {}\
-                                    --batch_size {} \
-                                    --embedding_dim {} \n".format(seed, finetune_flag,  dataset, sweep_name, hyperparams_name, lr, batch_size, embedding_dim))
+                            job_seed_path = os.path.join(job_path, "seed{}".format(seed))
+                            
+                            if not os.path.exists(job_seed_path):
+                                os.mkdir(job_seed_path)
+                                print(job_seed_path)
+                                job_file = os.path.join(job_seed_path, "sweep_job.sh")
+                            else:
+                                continue
 
-                    os.system("sbatch %s" %job_file)
+                            with open(job_file, 'w') as fh:
+                                fh.writelines("#!/bin/sh\n")
+                                fh.writelines("#SBATCH -o {}/run_log.sh.log-%j \n".format(job_seed_path))
+                                fh.writelines("#SBATCH -c 20 \n")
+                                fh.writelines("#SBATCH --gres=gpu:volta:1 \n")
 
-    # python /home/gridsan/ybo/advaug/main_transfer.py --finetune --dataset chapman --name finetune_random_chapman/lr0.001_bs128_convnet256 --debug --lr 0.001 --batch_size 128 --backbone convnet --embedding_dim 256 
+                                # --finetune \
+                                fh.writelines("python /home/gridsan/ybo/advaug/main_transfer.py \
+                                            --seed {} \
+                                            {} \
+                                            --dataset {} \
+                                            --max_epochs 200 \
+                                            --num_workers 10 \
+                                            --name {}/{} \
+                                            --project advaug_test \
+                                            --entity jessica-bo \
+                                            --wandb \
+                                            --lr {}\
+                                            --batch_size {} \
+                                            --pretrained_feature_extractor {} \
+                                            --embedding_dim {} \n".format(seed, finetune_flag,  dataset, sweep_name, hyperparams_name, lr, 
+                                                                        batch_size, pretrained_feature_extractor, embedding_dim))
+
+                            os.system("sbatch %s" %job_file)

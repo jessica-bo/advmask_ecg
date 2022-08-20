@@ -14,6 +14,8 @@ from utils.metrics import weighted_mean, evaluate_single
 sys.path.append('../data')
 from data.cinc2021.utils_cinc2021 import evaluate_scores
 
+from .backbones import BACKBONES
+
 # import logging
 # logging.basicConfig(level=logging.NOTSET)
 

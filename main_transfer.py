@@ -12,9 +12,9 @@ from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 from setup import parse_args_transfer
 
 from model.transfer_model import TransferModel
+from model.backbones import BACKBONES
 from utils.checkpointer import Checkpointer
-from setup import METHODS, NUM_CLASSES, BACKBONES, TARGET_TYPE
-
+from setup import METHODS, NUM_CLASSES, TARGET_TYPE
 from data.datamodule import ECGDataModule
 
 # import logging 
@@ -38,32 +38,29 @@ def main():
         ckpt_path = [ckpt_dir / ckpt for ckpt in os.listdir(ckpt_dir) if ckpt.endswith(".ckpt")][0]
 
         # load arguments
-        # method_parser = argparse.ArgumentParser()
         with open(args_path) as f:
             method_args = json.load(f)
-            # t_args = argparse.Namespace()
-            # t_args.__dict__.update(json.load(f))
-            # method_args = method_parser.parse_args(namespace=t_args)
         
-        # method = method_args["method"]
-        # build the model
-        # backbone = METHODS[method].load_from_checkpoint(ckpt_path, strict=False, **(method_args))
+        method = method_args["method"]
+        original_model = METHODS[method].load_from_checkpoint(ckpt_path, strict=False, **(method_args))
+        backbone = original_model.encoder
 
         # TLDR: we saved the base model as the checkpoint, but pytorch lightning load_from_checkpoint throws an error because of the initialization...?
         # Workaround is to manually get the base model's encoder's state dict, rename the keys to exclude 'encoder', and load it into a ResNet backbone
-        loaded_model = torch.load(ckpt_path)
-        state_dict = loaded_model['state_dict']
-        state_dict = dict((k[8::],v) for k,v in state_dict.items() if 'encoder' in k)
+        # loaded_model = torch.load(ckpt_path)
+        # state_dict = loaded_model['state_dict']
+        # state_dict = dict((k[8::],v) for k,v in state_dict.items() if 'encoder' in k)
 
-        backbone = BACKBONES[method_args["encoder_name"]](**(method_args))
-        backbone.load_state_dict(state_dict)
+        # backbone = BACKBONES[method_args["encoder_name"]](**(method_args))
+        # backbone.load_state_dict(state_dict)
 
+        print("Loaded pretrained model {}.".format(args.pretrained_feature_extractor))
     else:
         backbone = BACKBONES[args.backbone](**vars(args))
+        print("Loaded scratch model.")
 
     MethodClass = TransferModel
     model = MethodClass(encoder=backbone, 
-                        # console_log=console_log, 
                         n_classes=NUM_CLASSES[args.dataset], 
                         target_type=TARGET_TYPE[args.dataset], 
                         **args.__dict__)
@@ -81,6 +78,8 @@ def main():
     print(" Loaded datamodule with dataset {}.".format(args.dataset))
 
     callbacks = []
+    early_stop = EarlyStopping(monitor="transfer/val_auc", mode="min", patience=10)
+    callbacks.append(early_stop)
 
     # wandb logging
     if args.wandb:
@@ -109,7 +108,7 @@ def main():
         callbacks=callbacks,
         checkpoint_callback=False,
         terminate_on_nan=True,
-        gpus=args.num_devices,
+        gpus=-1,
         fast_dev_run=args.debug,
         accelerator="gpu",
         strategy="ddp",
@@ -119,7 +118,6 @@ def main():
 
     trainer.fit(model=model, datamodule=data_module)
     trainer.test(model=model, datamodule=data_module)
-
 
 if __name__ == "__main__":
     main()
