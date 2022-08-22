@@ -8,9 +8,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-import logging
-logging.basicConfig(level=logging.NOTSET)
-
 sys.path.append('../utils')
 from utils.metrics import weighted_mean, evaluate_single
 
@@ -19,8 +16,6 @@ from data.cinc2021.utils_cinc2021 import evaluate_scores
 
 from .backbones import BACKBONES
 
-# import logging
-# logging.basicConfig(level=logging.NOTSET)
 
 class TransferModel(pl.LightningModule):
     def __init__(
@@ -63,6 +58,7 @@ class TransferModel(pl.LightningModule):
 
         self.finetune = finetune
         if not self.finetune:
+            print("Freezing encoder params...")
             for param in self.encoder.parameters():
                 param.requires_grad = False
 
@@ -118,17 +114,6 @@ class TransferModel(pl.LightningModule):
         return {"logits": logits, "feats": feats}
 
     def configure_optimizers(self) -> Tuple[List, List]:
-        """Configures the optimizer for the linear layer.
-
-        Raises:
-            ValueError: if the optimizer is not in (sgd, adam).
-            ValueError: if the scheduler is not in not in (warmup_cosine, cosine, reduce, step,
-                exponential).
-
-        Returns:
-            Tuple[List, List]: two lists containing the optimizer and the scheduler.
-        """
-
         if self.finetune:
             optimizer = torch.optim.Adam(
                 list(self.classifier.parameters()) + list(self.encoder.parameters()),
@@ -189,9 +174,9 @@ class TransferModel(pl.LightningModule):
         Returns:
             torch.Tensor: cross-entropy loss between the predictions and the ground truth.
         """
-
         # set encoder to eval mode
-        self.encoder.eval()
+        if not self.finetune:
+            self.encoder.eval()
         batch_size, loss, acc, auc = self.shared_step(batch)
 
         results = {
@@ -219,7 +204,7 @@ class TransferModel(pl.LightningModule):
                 dict with the batch_size (used for averaging),
                 the classification loss and accuracies.
         """
-
+        # self.encoder.eval()
         batch_size, loss, acc, auc = self.shared_step(batch)
 
         results = {

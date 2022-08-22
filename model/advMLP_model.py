@@ -1,4 +1,3 @@
-from this import d
 import numpy as np
 import os, sys
 from functools import partial
@@ -12,23 +11,21 @@ import matplotlib.pyplot as plt
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.autograd import Variable
-
-from scipy.signal import stft, istft
 
 sys.path.append('../utils')
 from utils.losses import simclr_loss_fn
 from utils.metrics import weighted_mean, Entropy, evaluate_single
 from .base_model import BaseModel
-from .backbones.unet import unet1Dsmall, unet1D 
+from .backbones.mlp import mlp
 
 sys.path.append('../data')
 from data.cinc2021.utils_cinc2021 import evaluate_scores
+from data.transforms import AdvGaussian, Normalize
 
 from .backbones import BACKBONES
 
 
-class AdversarialModel(BaseModel):
+class AdvMLPModel(BaseModel):
     def __init__(
         self, 
         encoder_name,
@@ -45,13 +42,7 @@ class AdversarialModel(BaseModel):
         simclr_loss_only,
         mask_lr,
         train_mask_interval,
-        nmasks=1,
-        unet_depth=1, 
-        unet_large=False, 
-        alpha_sparsity=0.1,
-        ratio=1,
-        fourier=False,
-        accumulate_grad_batches=4,
+        accumulate_grad_batches,
         **kwargs):
         
         super().__init__(
@@ -82,22 +73,10 @@ class AdversarialModel(BaseModel):
         self.positive_pairing = positive_pairing
         self.weight_decay = weight_decay
         self.batch_size = batch_size
-        self.simclr_loss_only = simclr_loss_only
         
-        self.ratio = ratio
         self.train_mask_interval = train_mask_interval
-        self.alpha1 = alpha_sparsity
-        self.alpha2 = 0
-        self.nmasks = nmasks
         self.mask_lr = mask_lr * self.accumulate_grad_batches
         self.entropy = Entropy()
-        self.unet_depth = unet_depth
-        self.unet_large = unet_large
-
-        self.fourier = fourier
-
-        self.scaler_m = torch.cuda.amp.GradScaler()
-        self.scaler_e = torch.cuda.amp.GradScaler()
 
         # simclr projector
         self.projector = nn.Sequential(
@@ -107,38 +86,28 @@ class AdversarialModel(BaseModel):
         )
 
         self.classifier = nn.Linear(self.encoder.embedding_dim, n_classes)
+        self.augmenter = mlp(noutputs=1)
 
-        # Params 144,246,017
-        if self.unet_large:
-            self.mask_encoder = unet1D(input_dim=12, embedding_dim=self.encoder.embedding_dim, depth=self.unet_depth, nmasks=self.nmasks)
-        else:
-            self.mask_encoder = unet1Dsmall(input_dim=12, embedding_dim=self.encoder.embedding_dim, depth=self.unet_depth, nmasks=self.nmasks)
-        
+        self.normalize = Normalize()
+        self.gaussian = AdvGaussian()
+
     @staticmethod
     def add_model_specific_args(parent_parser: ArgumentParser) -> ArgumentParser:
-        parent_parser = super(AdversarialModel, AdversarialModel).add_model_specific_args(parent_parser)
+        parent_parser = super(AdvMLPModel, AdvMLPModel).add_model_specific_args(parent_parser)
         parser = parent_parser.add_argument_group("adversarial")
 
         # adios args
         parser.add_argument("--mask_lr", type=float, default=0.001)
-        parser.add_argument("--ratio", type=float, default=1)
         parser.add_argument("--train_mask_interval", type=int, default=1)
-        parser.add_argument("--nmasks", type=int, default=1)
-        parser.add_argument("--alpha_sparsity", type=float, default=1.)
-        parser.add_argument("--alpha_entropy", type=float, default=0.)
 
-        parser.add_argument("--unet_depth", type=int, default=1)
-        parser.add_argument("--unet_large", action="store_true", default=False)
-
-        parser.add_argument("--fourier", action="store_true", default=False)
         return parent_parser
 
     @property
     def learnable_params(self) -> Dict[str, Any]:
         encoder_learnable_params = list(self.encoder.parameters()) + list(self.projector.parameters()) + list(self.classifier.parameters())
-        mask_learnable_params = list(self.mask_encoder.parameters()) 
+        augment_learnable_params = list(self.augmenter.parameters()) 
 
-        return {"encoder": encoder_learnable_params, "mask": mask_learnable_params}
+        return {"encoder": encoder_learnable_params, "augment": augment_learnable_params}
 
     def configure_optimizers(self) -> Tuple[List, List]:
         optimizer = [torch.optim.Adam(
@@ -147,13 +116,11 @@ class AdversarialModel(BaseModel):
             weight_decay=self.weight_decay,
         ),
         torch.optim.Adam(
-                self.learnable_params['mask'],
+                self.learnable_params['augment'],
                 lr=self.mask_lr,
                 weight_decay=self.weight_decay,
             )]
-
-        # scaler = [torch.cuda.amp.GradScaler(), torch.cuda.amp.GradScaler()]
-        return optimizer#, scaler
+        return optimizer
 
     @property
     def automatic_optimization(self) -> bool:
@@ -185,50 +152,35 @@ class AdversarialModel(BaseModel):
                 [X] is a list of size self.n_crops containing batches of images.
             batch_idx (int): index of the batch.
         """
-        
-        with torch.cuda.amp.autocast():
-            # get optimiser and scheduler
-            opt_e, opt_m = self.optimizers()
+        # get optimiser and scheduler
+        opt_e, opt_m = self.optimizers()
 
-            # encoder (inference model) forward
-            self.flip_grad(status=True)
-            class_loss, batch_size, acc, auc = self.classifier_forward(batch, batch_idx)
-            nce_loss, _ = self.encoder_forward(batch, batch_size, False)
+        # encoder (inference model) forward
+        self.flip_grad(status=True)
+        class_loss, batch_size, acc, auc = self.classifier_forward(batch, batch_idx)
+        nce_loss, aug_param = self.encoder_forward(batch, batch_size, False)
+        encoder_loss = (class_loss + nce_loss) / self.accumulate_grad_batches
+        self.manual_backward(encoder_loss) #, opt_e) # maximise similarity
+        if (batch_idx + 1) % self.accumulate_grad_batches==0:
+            opt_e.step()
+            opt_e.zero_grad()
 
-            if self.simclr_loss_only: 
-                encoder_loss = nce_loss / self.accumulate_grad_batches
-            else:
-                encoder_loss = (class_loss + nce_loss) / self.accumulate_grad_batches
-
-            # self.manual_backward(Variable(encoder_loss, requires_grad=True)) 
-            self.scaler_e.scale(Variable(encoder_loss, requires_grad=True)).backward()
-            if (batch_idx + 1) % self.accumulate_grad_batches==0:
-                self.scaler_e.step(opt_e)
-                self.scaler_e.update()
-                # opt_e.step()
-                opt_e.zero_grad()
-
-            # masking model (occlusion model) forward
-            # if batch_idx % self.train_mask_interval == 0:
-            self.flip_grad(status=False)
+        # masking model (occlusion model) forward
+        if batch_idx % self.train_mask_interval == 0:
             log_image = True if batch_idx==0 else False
-            mask_nce_loss, mask_loss = self.mask_forward(batch, batch_size, log_image)
+            self.flip_grad(status=False)
+            mask_nce_loss = self.encoder_forward(batch, batch_size, log_image) / self.accumulate_grad_batches
 
             # Maximize NCE loss == make dissimilar and minimize mask enforced loss 
-            combined_mask_loss = (-mask_nce_loss + mask_loss) / self.accumulate_grad_batches
-            # self.manual_backward(Variable(combined_mask_loss, requires_grad=True)) 
-            self.scaler_m.scale(Variable(combined_mask_loss, requires_grad=True)).backward()
-
+            self.manual_backward(-mask_nce_loss) 
             if (batch_idx + 1) % self.accumulate_grad_batches==0:
-                self.scaler_m.step(opt_m)
-                self.scaler_m.update()
-                # opt_m.step()
+                opt_m.step()
                 opt_m.zero_grad()
 
         metrics = {
             "nce_loss": nce_loss,
             "class_loss": class_loss,
-            "mask_loss": mask_loss,
+            "aug_param": aug_param,
             "batch_size": batch_size,
             "acc": acc,
             "auc": auc,
@@ -238,8 +190,6 @@ class AdversarialModel(BaseModel):
 
     def training_epoch_end(self, outs: List[Dict[str, Any]]):
         super().training_epoch_end(outs)
-        mask_loss = weighted_mean(outs, "mask_loss", "batch_size")
-        self.log_dict({"train_mask_loss": mask_loss}, on_epoch=True, on_step=False, sync_dist=True)
 
     def classifier_forward(self, batch: Sequence[Any], batch_idx: int) -> torch.Tensor:
         X, targets = batch
@@ -261,49 +211,22 @@ class AdversarialModel(BaseModel):
          """
         X, targets = batch
         x_orig = X[:,:,:,0]
-        x_transformed = X[:,:,:,1]
-        masks = self.mask_encoder(x_transformed)
-        masks = (masks > 0.5).float()
+        aug_param = self.augmenter(x_orig)
+        x_transformed = self.gaussian(x_orig, aug_param)
+        x_transformed = self.normalize(x_transformed)
 
-        # randomly choose one mask for each sample in the batch
-        chosen_mask = torch.randint(low=0, high=self.nmasks, size=(actual_batch_size,))
-        mask = torch.stack([masks[idx, c, ...] for idx, c in enumerate(chosen_mask)], dim=0).unsqueeze(1)
-
-        if self.fourier: 
-            _, _, Zxx = stft(X, 500, nperseg=999)
-            Zxx = Zxx * (1-mask)
-            _, x_transformed = istft(Zxx)
-        else: 
-            x_transformed = x_transformed * (1-mask)
-            
-        feats1, feats2 = self.encoder(x_orig), self.encoder(x_transformed) #if mask=0, then nothing is masked
-        z1 = self.projector(feats1)
-        z2 = self.projector(feats2)
+        feats1, feats2 = self.encoder(x_orig), self.encoder(x_transformed) 
+        z1, z2 = self.projector(feats1), self.projector(feats2)
 
         # compute similarity between mask and no mask
         nce_loss = simclr_loss_fn(latent_embeddings=[z1, z2], 
                                   positive_pairing=self.positive_pairing, 
                                   temperature=self.temperature)
 
-        # if log_image: self.log_mask(x_orig[0], targets[0], masks[0].squeeze())
+        if log_image: self.log_mask(x_orig[0], x_transformed[0], targets[0])
 
-        return nce_loss, masks
+        return nce_loss, aug_param
 
-    def mask_forward(self, batch: Sequence[Any], actual_batch_size: int, log_image: bool) -> torch.Tensor:
-        """Forward function for masking model (occlusion model).
-
-        Args:
-            batch (Sequence[Any]): a batch of data in the format of [img_indexes, [X], Y], where
-                [X] is a list of size self.n_crops containing batches of images.
-        """
-        mask_nce_loss, masks = self.encoder_forward(batch, actual_batch_size, log_image)
-
-        # compute mask penalty
-        mask_penalty = masks.sum([-1]) / 5000
-        mask_loss = (self.alpha1 * (1 / (torch.sin(self.ratio * mask_penalty * np.pi) + 1e-10)).mean(0).sum(0))
-        # mask_loss += (self.alpha2 * self.entropy(mask_penalty))
-
-        return mask_nce_loss, mask_loss
 
     def validation_step(self, batch: List[torch.Tensor], batch_idx: int) -> Dict[str, Any]:
         # call parent class to get results from standard metrics
@@ -313,28 +236,12 @@ class AdversarialModel(BaseModel):
     def validation_epoch_end(self, outs: List[Dict[str, Any]]):
         super().validation_epoch_end(outs)
 
-    def log_mask(self, x_orig, target, mask):
+    def log_mask(self, x_orig, x_transformed, target):
 
-        final_mask = 1 - mask
-        final_mask = final_mask.detach().cpu().numpy()
+        fig, axs = plt.subplots(2, 1, figsize=(15, 12))
 
-        if self.nmasks == 1:
-            fig = plt.figure(figsize=(12, 6))
-            plt.plot(x_orig.squeeze().transpose(0,1).detach().cpu().numpy(), 'red')
-
-            for j in range(5000-1):
-                if final_mask[j] == 0:
-                    plt.axvspan(j, j+1, ymin=0, ymax=1, alpha=0.7,zorder=10)
-        else:
-            fig, axs = plt.subplots(self.nmasks, 1, figsize=(15, 12))
-
-            for i in range(self.nmasks):
-                axs[i].plot(x_orig.squeeze().transpose(0,1).detach().cpu().numpy(), 'red')
-                final_mask_i = final_mask[i]
-                
-                for j in range(5000-1):
-                    if final_mask_i[j] == 0:
-                        axs[i].axvspan(j, j+1, ymin=0, ymax=1, alpha=0.7,zorder=10)
+        axs[0].plot(x_orig.squeeze().transpose(0,1).detach().cpu().numpy(), 'red')
+        axs[1].plot(x_transformed.squeeze().transpose(0,1).detach().cpu().numpy(), 'blue')
 
         fig.canvas.draw()
         image = PIL.Image.frombytes('RGB', fig.canvas.get_width_height(),fig.canvas.tostring_rgb())

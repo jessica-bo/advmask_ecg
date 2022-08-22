@@ -7,7 +7,7 @@ import os
 
 num_devices = 1
 output_directory = "/home/gridsan/ybo/advaug/outputs/"
-sweep_name = "pretrain/adversarial_cinc2021_resnet" # "pretrain_chapman_resnet_augmentations" # 
+sweep_name = "pretrain/adversarial_cinc2021_testunet" # "pretrain_chapman_resnet_augmentations" # 
 
 job_directory = os.path.join(output_directory, sweep_name)
 
@@ -15,27 +15,31 @@ job_directory = os.path.join(output_directory, sweep_name)
 if not os.path.exists(job_directory):
     os.mkdir(job_directory)
 
-seeds = [0, 1, 10, 42]
+seeds = [1] #, 10, 42]
+simclr_loss_flags = ["", "--simclr_loss_only"]
 lrs = [0.0001] 
 mask_lrs = [0.0001]
-batch_sizes = [32] 
-accumulate_grad_batches = [4]
-embedding_dims = [512] #1024
 train_mask_intervals = [1] 
-alpha_sparsitys = [0.1, 0.5] 
-ratios = [5, 2, 1]
+alpha_sparsitys = [0.1] 
+ratios = [1]
+unet_depths = [1]
+unet_sizes = ["--unet_large"]
+nmaskss = [1, 2]
+batch_size = 32
+accumulate_grad_batch = 4
+embedding_dim = 512 
 
 for seed in seeds: 
     for lr in lrs:
-        for batch_size in batch_sizes:
-            for accumulate_grad_batch in accumulate_grad_batches:
-                for mask_lr in mask_lrs: 
-                    for embedding_dim in embedding_dims:
-                        for train_mask_interval in train_mask_intervals:
+        for mask_lr in mask_lrs: 
+            for unet_depth in unet_depths:
+                for unet_size in unet_sizes:
+                    for nmasks in nmaskss:
+                        for simclr_loss_flag in simclr_loss_flags:
                             for alpha_sparsity in alpha_sparsitys:
                                 for ratio in ratios:
 
-                                    hyperparams_name = "lr{}_mlr{}_R{}_alpha{}_int{}_bs{}x{}_resnet{}".format(lr, mask_lr, ratio, alpha_sparsity, train_mask_interval, batch_size, accumulate_grad_batch,embedding_dim)
+                                    hyperparams_name = "R{}_alpha{}_masks{}_resnet{}_unet{}{}{}".format(ratio, alpha_sparsity, nmasks, embedding_dim, unet_depth, unet_size, simclr_loss_flag)
 
                                     job_path = os.path.join(job_directory, hyperparams_name)
                                     job_file = os.path.join(job_path, "sweep_job.sh")
@@ -77,10 +81,14 @@ for seed in seeds:
                                                         --accumulate_grad_batches {} \
                                                         --encoder_name resnet \
                                                         --embedding_dim {} \
-                                                        --train_mask_interval {} \
+                                                        --train_mask_interval 1 \
                                                         --alpha_sparsity {} \
-                                                        --ratio {} \n".format(seed, num_devices, sweep_name, hyperparams_name, lr, mask_lr, 
-                                                                            batch_size, accumulate_grad_batch, embedding_dim, 
-                                                                            train_mask_interval, alpha_sparsity, ratio))
+                                                        --ratio {} \
+                                                        --unet_depth {} \
+                                                        --nmasks {} \
+                                                        {} \
+                                                        {} \n".format(seed, num_devices, sweep_name, hyperparams_name, lr, mask_lr, 
+                                                                      batch_size, accumulate_grad_batch, embedding_dim, 
+                                                                      alpha_sparsity, ratio, unet_depth, nmasks, unet_size, simclr_loss_flag))
 
                                     os.system("sbatch %s" %job_file)

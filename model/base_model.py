@@ -155,9 +155,9 @@ class BaseModel(pl.LightningModule):
                                   positive_pairing=self.positive_pairing, 
                                   temperature=self.temperature)
         if self.simclr_loss_only: 
-            loss = nce_loss
+            loss = nce_loss / self.accumulate_grad_batches
         else:
-            loss = nce_loss + classification_loss
+            loss = (nce_loss + classification_loss) / self.accumulate_grad_batches
 
         metrics = {
             "nce_loss": nce_loss,
@@ -195,8 +195,6 @@ class BaseModel(pl.LightningModule):
             "val_acc": out["acc"],
             "val_auc": out["auc"]
         }
-        # for key in self.metric_keys:
-        #     metrics.update({f"val_{key}": out[key]})
 
         return metrics
 
@@ -218,7 +216,5 @@ class BaseModel(pl.LightningModule):
             "val_acc": acc,
             "val_auc": auc
         }
-        # for key in self.metric_keys:
-        #     metrics.update({f"val_{key}": weighted_mean(outs, f"val_{key}", "batch_size")})
 
         self.log_dict(metrics, on_epoch=True, on_step=False, sync_dist=True)

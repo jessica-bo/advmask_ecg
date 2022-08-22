@@ -6,8 +6,10 @@ torch.cuda.empty_cache()
 
 from pytorch_lightning import Trainer, seed_everything
 from pytorch_lightning.callbacks import LearningRateMonitor
+from pytorch_lightning.utilities.model_summary import ModelSummary
 from pytorch_lightning.loggers import WandbLogger
 from pytorch_lightning.callbacks.early_stopping import EarlyStopping
+from pytorch_lightning.plugins import DDPPlugin
 
 from setup import parse_args_transfer
 
@@ -40,19 +42,11 @@ def main():
             method_args = json.load(f)
         
         method = method_args["method"]
-        original_model = METHODS[method].load_from_checkpoint(ckpt_path, strict=False, **(method_args))
+        original_model = METHODS[method].load_from_checkpoint(ckpt_path, strict=False, **(method_args))        
         backbone = original_model.encoder
-
-        # TLDR: we saved the base model as the checkpoint, but pytorch lightning load_from_checkpoint throws an error because of the initialization...?
-        # Workaround is to manually get the base model's encoder's state dict, rename the keys to exclude 'encoder', and load it into a ResNet backbone
-        # loaded_model = torch.load(ckpt_path)
-        # state_dict = loaded_model['state_dict']
-        # state_dict = dict((k[8::],v) for k,v in state_dict.items() if 'encoder' in k)
-
-        # backbone = BACKBONES[method_args["encoder_name"]](**(method_args))
-        # backbone.load_state_dict(state_dict)
-
         print("Loaded pretrained model {}.".format(args.pretrained_feature_extractor))
+        print(ModelSummary(original_model, max_depth=1))
+
     else:
         backbone = BACKBONES[args.backbone](**vars(args))
         print("Loaded scratch model.")
@@ -62,23 +56,19 @@ def main():
                         n_classes=NUM_CLASSES[args.dataset], 
                         target_type=TARGET_TYPE[args.dataset], 
                         **args.__dict__)
+    print(ModelSummary(model, max_depth=1))
     
-    data_module= ECGDataModule(data_dir=args.data_dir, 
-                               dataset=args.dataset, 
-                               batch_size=args.batch_size, 
-                               method="transfer", 
-                               seed=args.seed, 
+    data_module= ECGDataModule(method="transfer", 
                                positive_pairing=None, 
                                nleads=12, 
-                               num_workers=args.num_workers, 
-                               do_test=True)
+                               do_test=True, 
+                               **args.__dict__)
 
     print(" Loaded datamodule with dataset {}.".format(args.dataset))
 
     callbacks = []
-    early_stop = EarlyStopping(monitor="transfer/val_auc", mode="min", patience=10)
+    early_stop = EarlyStopping(monitor="transfer/val_auc", mode="max", patience=10)
     callbacks.append(early_stop)
-
     # wandb logging
     if args.wandb:
         print("Initiating WandB configs.")
@@ -86,7 +76,7 @@ def main():
         wandb_logger = WandbLogger(
             name=args.name, project=args.project, entity=args.entity, offline=True
         )
-        wandb_logger.watch(model, log="gradients", log_freq=100)
+        # wandb_logger.watch(model, log="gradients", log_freq=100)
         wandb_logger.log_hyperparams(args)
 
         # lr logging
@@ -103,8 +93,10 @@ def main():
 
     trainer = Trainer.from_argparse_args(
         args,
+        # weights_summary="top",
         logger=wandb_logger if args.wandb else None,
         callbacks=callbacks,
+        # plugins=DDPPlugin(find_unused_parameters=False),
         checkpoint_callback=False,
         terminate_on_nan=True,
         gpus=-1,
@@ -112,9 +104,9 @@ def main():
         accelerator="gpu",
         strategy="ddp",
         profiler="simple",
+        replace_sampler_ddp=False,
     )
     print(" Created Lightning Trainer and starting training.")
-
 
     trainer.fit(model=model, datamodule=data_module)
     trainer.test(model=model, datamodule=data_module)

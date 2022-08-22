@@ -7,19 +7,20 @@ import os
 
 output_directory = "/home/gridsan/ybo/advaug/outputs/"
 dataset = "chapman"
-pretrain_path = "/home/gridsan/ybo/advaug/outputs/pretrain/adversarial_cinc2021_resnet"
-pretrained_feature_extractors = [ item for item in os.listdir(pretrain_path) if os.path.isdir(os.path.join(pretrain_path, item)) ]
+pretrain_folder = "adversarial_cinc2021_testunet"
+pretrain_path = os.path.join("/home/gridsan/ybo/advaug/outputs/pretrain/", pretrain_folder)
+pretrained_feature_extractors = [item for item in os.listdir(pretrain_path) if os.path.isdir(os.path.join(pretrain_path, item))]
 
-seeds = [0, 1, 10, 42]
+seeds = [1] #[0, 1, 10, 42]
 lrs = [0.001] #, 0.0001]
 batch_sizes = [256] #, 256]
 backbones = ['resnet']
 embedding_dims = [1024] #, 512, 1024]
 
-trials = ["linear", "finetune"]
+trials = ["linear", "finetune"] #, "finetune"]
 
 for trial in trials:
-    sweep_name = "transfer/{}/adversarial_{}".format(trial, dataset)
+    sweep_name = "transfer/{}/{}".format(trial, pretrain_folder)
     finetune_flag = "--finetune" if trial=="finetune" else ""
 
     job_directory = os.path.join(output_directory, sweep_name)
@@ -36,12 +37,10 @@ for trial in trials:
                             hyperparams_name = "{}".format(pretrained_feature_extractor)                
                             pretrained_feature_extractor = os.path.join(pretrain_path, pretrained_feature_extractor, "seed{}".format(seed))
 
-                            # hyperparams_name = "lr{}_bs{}_resnet{}".format(lr, batch_size, embedding_dim, )
-
                             job_path = os.path.join(job_directory, hyperparams_name)
                             job_file = os.path.join(job_path, "sweep_job.sh")
 
-                            # Create lizard directories
+                            # Create directories
                             if not os.path.exists(job_path):
                                 os.mkdir(job_path)
 

@@ -5,17 +5,15 @@ import torch
 torch.cuda.empty_cache()
 
 from pytorch_lightning import Trainer, seed_everything
-<<<<<<< HEAD
 from pytorch_lightning.tuner.tuning import Tuner
-=======
->>>>>>> 8d67d82501a84a7b4f3838d7f8767f60974dca63
+from pytorch_lightning.plugins import DDPPlugin
+
 from pytorch_lightning.callbacks import LearningRateMonitor
 from pytorch_lightning.loggers import WandbLogger
 from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 
 from model.transfer_model import TransferModel
 from utils.checkpointer import Checkpointer
-<<<<<<< HEAD
 from setup import parse_args_pretrain, METHODS, NUM_CLASSES, TARGET_TYPE
 
 from data.datamodule import ECGDataModule
@@ -26,23 +24,12 @@ logging.config.dictConfig({
     'version': 1,
     'disable_existing_loggers': True,
 })
-=======
-from setup import parse_args_pretrain, METHODS, NUM_CLASSES, BACKBONES, TARGET_TYPE
 
-from data.datamodule import ECGDataModule
-
-import logging 
-logging.basicConfig(level=logging.NOTSET)
-
->>>>>>> 8d67d82501a84a7b4f3838d7f8767f60974dca63
 
 def main():
     args = parse_args_pretrain()
     seed_everything(args.seed)
 
-<<<<<<< HEAD
-    # console_log = logging.getLogger("Lightning")
-    # console_log.setLevel(20)
     print(" Beginning pretrain main() with seed {} and arguments {}: \n".format(args.seed, args))
 
     callbacks = []
@@ -53,55 +40,26 @@ def main():
                         **args.__dict__)
                         
     print(" Loaded {} model.".format(args.method))
-=======
-    console_log = logging.getLogger("Lightning")
-    console_log.info(" Beginning pretrain main() with seed {} and arguments {}: \n".format(args.seed, args))
 
-    callbacks = []
 
-    encoder = BACKBONES[args.encoder_name](**vars(args))
-
-    MethodClass = METHODS[args.method]
-    model = MethodClass(encoder=encoder, 
-                        console_log=console_log, 
-                        n_classes=NUM_CLASSES[args.dataset], 
-                        target_type=TARGET_TYPE[args.dataset], 
-                        **args.__dict__)
-                        
-    console_log.info(" Loaded {} model.".format(args.method))
->>>>>>> 8d67d82501a84a7b4f3838d7f8767f60974dca63
-
-    data_module= ECGDataModule(data_dir=args.data_dir, 
-                               dataset=args.dataset, 
-                               batch_size=args.batch_size, 
-                               method=args.method, 
-                               seed=args.seed, 
-                               positive_pairing=args.positive_pairing,
-                               nleads=12, 
-                               num_workers=args.num_workers, 
+    data_module= ECGDataModule(nleads=12, 
                                do_test=False,
-                               debug=args.debug)
+                               **args.__dict__)
 
-<<<<<<< HEAD
     print(" Loaded datamodule with dataset {}.".format(args.dataset))
 
     callbacks = []
-    early_stop = EarlyStopping(monitor="val_class_loss", mode="min", patience=10) #TODO 
-=======
-    console_log.info(" Loaded datamodule with dataset {}.".format(args.dataset))
+    if args.simclr_loss_only:
+        early_stop = EarlyStopping(monitor="train_nce_loss", mode="min", patience=5) 
+    else:
+        early_stop = EarlyStopping(monitor="val_acc", mode="max", patience=5) 
 
-    callbacks = []
-    early_stop = EarlyStopping(monitor="val_loss", mode="min", patience=10)
->>>>>>> 8d67d82501a84a7b4f3838d7f8767f60974dca63
     callbacks.append(early_stop)
 
     # wandb logging
     if args.wandb:
-<<<<<<< HEAD
         print("Initiating WandB configs.")
-=======
-        console_log.info("Initiating WandB configs.")
->>>>>>> 8d67d82501a84a7b4f3838d7f8767f60974dca63
+
         wandb_logger = WandbLogger(
             name=args.name, project=args.project, entity=args.entity, offline=True
         )
@@ -122,11 +80,13 @@ def main():
 
     trainer = Trainer.from_argparse_args(
         args,
+        weights_summary="top",
         logger=wandb_logger if args.wandb else None,
         callbacks=callbacks,
+        # plugins=DDPPlugin(find_unused_parameters=False),
+        # accelerator="ddp",
         checkpoint_callback=False,
         terminate_on_nan=True,
-<<<<<<< HEAD
         gpus=args.num_devices,
         fast_dev_run=args.debug,
         accelerator="gpu",
@@ -134,6 +94,7 @@ def main():
         precision=16,
         profiler="simple",
         accumulate_grad_batches=args.accumulate_grad_batches if args.method=="base" else None, # disable for adversarial 
+        replace_sampler_ddp=False,
         # auto_scale_batch_size='power',
         # auto_lr_find=True,
     )
@@ -145,30 +106,17 @@ def main():
         print("Finding batch_size...")
         new_batch_size = tuner.scale_batch_size(model, datamodule=data_module)
         print(new_batch_size)
-=======
-        # accelerator="gpu", 
-        gpus=args.num_devices,
-        fast_dev_run=args.debug,
-        accelerator="ddp"
-    )
-    console_log.info(" Created Lightning Trainer and starting training.")
 
-    trainer.fit(model=model, datamodule=data_module)
->>>>>>> 8d67d82501a84a7b4f3838d7f8767f60974dca63
 
         print("Finding LR...")
         lr_finder = tuner.lr_find(model, datamodule=data_module)
         print(lr_finder.results)
         print(lr_finder.suggestion())
 
-<<<<<<< HEAD
     else:
         print(" Created Lightning Trainer and starting training.")
         trainer.fit(model=model, datamodule=data_module)
 
-
-=======
->>>>>>> 8d67d82501a84a7b4f3838d7f8767f60974dca63
 if __name__ == "__main__":
     main()
 

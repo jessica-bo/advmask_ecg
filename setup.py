@@ -11,6 +11,7 @@ from argparse import Namespace
 
 from model.base_model import BaseModel
 from model.adversarial_model import AdversarialModel
+from model.advMLP_model import AdvMLPModel
 from model.transfer_model import TransferModel
 
 from utils.checkpointer import Checkpointer
@@ -22,6 +23,7 @@ from model.backbones.transformer import transformer_d2_h4_dim64l
 METHODS = {
     "base": BaseModel,
     "adversarial": AdversarialModel,
+    "advgaussian": AdvMLPModel,
     "transfer": TransferModel,
 }
 
@@ -37,6 +39,10 @@ TARGET_TYPE = {
     "ptbxl": "multilabel",
 }
 
+def none_or_str(value):
+    if value == 'None':
+        return None
+    return value
 
 def parse_args_pretrain() -> argparse.Namespace:
     """Parses dataset, augmentation, pytorch lightning, model specific and additional args.
@@ -123,7 +129,7 @@ def parse_args_transfer():
 
     parser = argparse.ArgumentParser()
 
-    parser.add_argument("--pretrained_feature_extractor", type=str, default=None)
+    parser.add_argument("--pretrained_feature_extractor", type=none_or_str, nargs='?', default=None)
     parser.add_argument("--finetune", action="store_true", default=False)
     parser.add_argument("--debug", action="store_true", default=False)
     parser.add_argument("--seed", type=int, default=1)
