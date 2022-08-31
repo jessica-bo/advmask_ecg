@@ -1,6 +1,11 @@
+"""
+Adapted from @danikiyasseh
+Source: https://github.com/danikiyasseh/CLOCS/blob/master/prepare_network.py
+
+"""
+
 import torch.nn as nn
 import torch
-
 
 c1 = 12 #b/c single time-series
 c2 = 4 #4
@@ -8,7 +13,6 @@ c3 = 16 #16
 c4 = 32 #32
 k=7 #kernel size #7 
 s=3 #stride #3
-#num_classes = 3
 
 class convnet1d(nn.Module):
     

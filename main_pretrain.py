@@ -1,6 +1,11 @@
+"""
+Adapted from @YugeTen 
+Source: https://github.com/YugeTen/adios/blob/main/main_pretrain.py
+
+"""
+
 import os
-import json
-from pathlib import Path
+
 import torch
 torch.cuda.empty_cache()
 
@@ -14,60 +19,42 @@ from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 
 from utils.checkpointer import Checkpointer
 from setup import parse_args_pretrain, METHODS, NUM_CLASSES, TARGET_TYPE
-
 from data.datamodule import ECGDataModule
-
-# import logging 
-# import logging.config
-# logging.config.dictConfig({
-#     'version': 1,
-#     'disable_existing_loggers': True,
-# })
-
 
 def main():
     args = parse_args_pretrain()
     seed_everything(args.seed)
-
     print(" Beginning pretrain main() with seed {} and arguments {}: \n".format(args.seed, args))
 
     MethodClass = METHODS[args.method]
     model = MethodClass(n_classes=NUM_CLASSES[args.dataset], 
                         target_type=TARGET_TYPE[args.dataset], 
                         **args.__dict__)
-                        
     print(" Loaded {} model.".format(args.method))
 
 
-    data_module= ECGDataModule(nleads=12, 
-                               do_test=False,
+    data_module = ECGDataModule(do_test=False,
                                **args.__dict__)
-
     print(" Loaded datamodule with dataset {}.".format(args.dataset))
 
     callbacks = []
     if args.simclr_loss_only:
         early_stop = EarlyStopping(monitor="train_nce_loss", mode="min", patience=5) 
+        print("Early stopping with train_nce_loss.")
     else:
         early_stop = EarlyStopping(monitor="val_acc", mode="max", patience=5) 
+        print("Early stopping with val_acc.")
 
     callbacks.append(early_stop)
 
-    # wandb logging
     if args.wandb:
         print("Initiating WandB configs.")
 
         wandb_logger = WandbLogger(
             name=args.name, project=args.project, entity=args.entity, offline=True
         )
-        wandb_logger.watch(model, log=None) #, log_freq=100)
         wandb_logger.log_hyperparams(args)
 
-        # lr logging
-        lr_monitor = LearningRateMonitor(logging_interval="epoch")
-        callbacks.append(lr_monitor)
-
-        # save checkpoint on last epoch only
         ckpt = Checkpointer(
             args,
             logdir=os.path.join(args.checkpoint_dir, args.name, "seed{}".format(args.seed)),
@@ -77,11 +64,8 @@ def main():
 
     trainer = Trainer.from_argparse_args(
         args,
-        # weights_summary="top",
         logger=wandb_logger if args.wandb else None,
         callbacks=callbacks,
-        # plugins=DDPPlugin(find_unused_parameters=False),
-        # accelerator="ddp",
         checkpoint_callback=False,
         terminate_on_nan=True,
         gpus=args.num_devices,
@@ -90,29 +74,12 @@ def main():
         strategy="ddp",
         precision=16 if args.method=="adversarial" else 32,
         profiler="simple",
-        accumulate_grad_batches=args.accumulate_grad_batches if args.method=="base" else None, # disable for adversarial 
+        accumulate_grad_batches=args.accumulate_grad_batches if args.method=="base" else None, # do manually for adversarial 
         replace_sampler_ddp=False,
-        # auto_scale_batch_size='power',
-        # auto_lr_find=True,
     )
     
-    # TODO cuda error 
-    if args.tune:
-        tuner = Tuner(trainer)
-
-        print("Finding batch_size...")
-        new_batch_size = tuner.scale_batch_size(model, datamodule=data_module)
-        print(new_batch_size)
-
-
-        print("Finding LR...")
-        lr_finder = tuner.lr_find(model, datamodule=data_module)
-        print(lr_finder.results)
-        print(lr_finder.suggestion())
-
-    else:
-        print(" Created Lightning Trainer and starting training.")
-        trainer.fit(model=model, datamodule=data_module)
+    print("Created Lightning Trainer and starting training.")
+    trainer.fit(model=model, datamodule=data_module)
 
 if __name__ == "__main__":
     main()

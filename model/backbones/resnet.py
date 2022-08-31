@@ -1,6 +1,7 @@
 """
-Adapted from `https://github.com/pytorch/vision/blob/master/torchvision/models/resnet.py`
-https://github.com/seitalab/dnn_ecg_comparison/blob/main/experiment/codes/architectures/resnet1d.py
+Adapted from @seitalab
+Source: https://github.com/seitalab/dnn_ecg_comparison/blob/main/experiment/codes/architectures/resnet1d.py
+
 """
 from typing import Type, Any, Callable, Union, List, Optional
 

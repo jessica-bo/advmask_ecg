@@ -1,3 +1,8 @@
+"""
+Adapted from https://www.kaggle.com/code/super13579/u-net-1d-cnn-with-pytorch/notebook
+
+"""
+
 import torch.nn as nn
 import torch
 
@@ -83,7 +88,7 @@ class unet1D(nn.Module):
 
 # count_param(unet1dsmall)=65,766,529 with depth=1, kernel_size=5
 class unet1Dsmall(nn.Module):
-    def __init__(self, input_dim, embedding_dim, depth, nmasks, fourier):
+    def __init__(self, input_dim, embedding_dim, depth, nmasks, fourier=False, fourier_scale=1.1):
         super(unet1Dsmall, self).__init__()
         self.input_dim = input_dim
         self.embedding_dim = embedding_dim

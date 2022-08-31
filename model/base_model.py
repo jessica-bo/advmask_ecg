@@ -1,7 +1,12 @@
+"""
+Adapted from @YugeTen 
+Source: https://github.com/YugeTen/adios/blob/main/src/methods/base.py
+        https://github.com/YugeTen/adios/blob/main/src/methods/simclr.py
+"""
+
 from argparse import ArgumentParser
-from functools import partial
-from typing import Any, Callable, Dict, List, Sequence, Tuple
-import os, sys
+from typing import Any, Dict, List, Sequence
+import sys
 
 import pytorch_lightning as pl
 import torch
@@ -10,7 +15,7 @@ import torch.nn.functional as F
 
 sys.path.append('../utils')
 from utils.losses import simclr_loss_fn
-from utils.metrics import calculate_auc, calculate_acc, weighted_mean, evaluate_single
+from utils.metrics import weighted_mean, evaluate_single
 
 sys.path.append('../data')
 from data.cinc2021.utils_cinc2021 import evaluate_scores
@@ -32,7 +37,6 @@ class BaseModel(pl.LightningModule):
         output_dim,
         positive_pairing,
         simclr_loss_only,
-        accumulate_grad_batches,
         **kwargs):
         super().__init__()
 
@@ -41,44 +45,36 @@ class BaseModel(pl.LightningModule):
         self.encoder = BACKBONES[self.encoder_name](**kwargs)
         print("Loaded {} backbone.".format(self.encoder_name))
                         
-        self.accumulate_grad_batches = 1 if accumulate_grad_batches==None else accumulate_grad_batches
+        self.lr = lr
         self.max_epochs = max_epochs
         self.temperature = temperature
-        self.lr = lr * self.accumulate_grad_batches
-
         self.positive_pairing = positive_pairing
         self.weight_decay = weight_decay
         self.batch_size = batch_size
         self.target_type = target_type
-        self.simclr_loss_only = simclr_loss_only
+        self.simclr_loss_only = simclr_loss_only # do no include classification loss 
 
-        # projector
         self.projector = nn.Sequential(
             nn.Linear(self.encoder.embedding_dim, proj_hidden_dim),
             nn.ReLU(),
             nn.Linear(proj_hidden_dim, output_dim),
         )
-        
         self.classifier = nn.Linear(self.encoder.embedding_dim, n_classes)
 
-        self.metric_keys = ['acc', 'auc'] 
         if target_type == 'multilabel':
-            self.loss_fn = torch.nn.BCEWithLogitsLoss()#F.binary_cross_entropy_with_logits #torch.nn.BCELoss() #
+            self.loss_fn = torch.nn.BCEWithLogitsLoss()
             self.eval_fn = evaluate_scores
         elif target_type == "single":
             self.loss_fn = F.cross_entropy
             self.eval_fn = evaluate_single
 
-        # self.loss_fn = torch.nn.BCEWithLogitsLoss() #F.cross_entropy
-
     @staticmethod
     def add_model_specific_args(parent_parser: ArgumentParser) -> ArgumentParser:
-
         parser = parent_parser.add_argument_group("base")
 
         # general train
         parser.add_argument("--batch_size", type=int, default=32)
-        parser.add_argument("--lr", type=float, default=0.1)
+        parser.add_argument("--lr", type=float, default=0.001)
         parser.add_argument("--weight_decay", type=float, default=0)
         parser.add_argument("--num_workers", type=int, default=9)
         parser.add_argument("--embedding_dim", type=int, default=512)
@@ -93,14 +89,18 @@ class BaseModel(pl.LightningModule):
         parser.add_argument("--encoder_name", type=str, default='resnet')
         parser.add_argument("--output_dim", type=int, default=128)
         parser.add_argument("--proj_hidden_dim", type=int, default=2048)
-        parser.add_argument('--learning_rate', type=float, default=0.001)
         parser.add_argument("--temperature", type=float, default=0.1)
 
         return parent_parser
 
+    @property
+    def learnable_params(self) -> Dict[str, Any]:
+        learnable_params = list(self.encoder.parameters()) + list(self.projector.parameters()) + list(self.classifier.parameters())
+        return {"encoder": learnable_params}
+
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(
-            list(self.encoder.parameters()) + list(self.projector.parameters()) + list(self.classifier.parameters()),
+            self.learnable_params['encoder'],
             lr=self.lr,
             weight_decay=self.weight_decay,
         )
@@ -117,7 +117,6 @@ class BaseModel(pl.LightningModule):
 
         out = self.forward(X)
         logits, feats, z = out["logits"], out["feats"], out["z"]     
-        # logits = torch.sigmoid(logits)
 
         targets = targets.type(torch.float) if self.target_type == "multilabel" else targets
         class_loss = self.loss_fn(logits + 1e-10, targets.type(torch.float))
@@ -165,10 +164,9 @@ class BaseModel(pl.LightningModule):
             "class_loss": classification_loss,
             "loss": loss,
             "batch_size": outs[0]["batch_size"],
+            "acc": sum(out["acc"] for out in outs) / 2,
+            "auc": sum(out["auc"] for out in outs) / 2,
         }
-        
-        for key in self.metric_keys:
-            metrics.update({f"{key}": sum(out[key] for out in outs) / 2})
 
         return metrics
 

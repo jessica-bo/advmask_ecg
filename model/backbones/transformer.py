@@ -1,3 +1,8 @@
+"""
+Adapted from @seitalab
+Source: https://github.com/seitalab/dnn_ecg_comparison/blob/main/experiment/codes/architectures/transformer.py
+
+"""
 import math
 from typing import Any
 

@@ -30,18 +30,9 @@ class TransferModel(pl.LightningModule):
         finetune,
         **kwargs,
     ):
-        """Implements linear evaluation.
-
-        Args:
-            encoder (nn.Module): backbone architecture for feature extraction.
-            n_classes (int): number of classes in the dataset.
-            max_epochs (int): total number of epochs.
-            batch_size (int): batch size.
-            optimizer (str): optimizer to use.
-            lr (float): learning rate.
-            weight_decay (float): weight decay.
         """
-
+        Linear evaluation (LE) or finetuning (FT).
+        """
         super().__init__()
         self.save_hyperparameters()
 
@@ -71,16 +62,6 @@ class TransferModel(pl.LightningModule):
 
     @staticmethod
     def add_model_specific_args(parent_parser: ArgumentParser) -> ArgumentParser:
-        """Adds basic linear arguments.
-
-        Args:
-            parent_parser (ArgumentParser): argument parser that is used to create a
-                argument group.
-
-        Returns:
-            ArgumentParser: same as the argument, used to avoid errors.
-        """
-
         parser = parent_parser.add_argument_group("linear")
 
         # general train
@@ -98,21 +79,6 @@ class TransferModel(pl.LightningModule):
 
         return parent_parser
 
-    def forward(self, X: torch.tensor) -> Dict[str, Any]:
-        """Performs forward pass of the frozen encoder and the linear layer for evaluation.
-
-        Args:
-            X (torch.tensor): a batch of images in the tensor format.
-
-        Returns:
-            Dict[str, Any]: a dict containing features and logits.
-        """
-        with torch.no_grad():
-            feats = self.encoder(X)
-
-        logits = self.classifier(feats)
-        return {"logits": logits, "feats": feats}
-
     def configure_optimizers(self) -> Tuple[List, List]:
         if self.finetune:
             optimizer = torch.optim.Adam(
@@ -129,17 +95,21 @@ class TransferModel(pl.LightningModule):
 
         return optimizer
 
+    def forward(self, X: torch.tensor) -> Dict[str, Any]:
+        """
+        Performs forward pass of the encoder and the linear layer for evaluation.
+        """
+        with torch.no_grad():
+            feats = self.encoder(X)
+
+        logits = self.classifier(feats)
+        return {"logits": logits, "feats": feats}
+
     def shared_step(
         self, batch: Tuple) -> Tuple[int, torch.Tensor, torch.Tensor, torch.Tensor]:
-        """Performs operations that are shared between the training nd validation steps.
-
-        Args:
-            batch (Tuple): a batch of images in the tensor format.
-        Returns:
-            Tuple[int, torch.Tensor, torch.Tensor, torch.Tensor]:
-                batch size, loss, accuracy @1 and accuracy @5.
         """
-
+        Performs operations that are shared between the training nd validation steps.
+        """
         X, target = batch
         batch_size = X.size(0)
 
@@ -152,14 +122,9 @@ class TransferModel(pl.LightningModule):
         return batch_size, loss, acc, auc
 
     def shared_epoch_end(self, outs: List[Dict[str, Any]]):
-        """Averages the losses and accuracies of all the validation batches.
-        This is needed because the last batch can be smaller than the others,
-        slightly skewing the metrics.
-
-        Args:
-            outs (List[Dict[str, Any]]): list of outputs of the validation step.
         """
-
+        Averages the losses and accuracies of all the validation batches.
+        """
         loss = weighted_mean(outs, "loss", "batch_size")
         acc = weighted_mean(outs, "acc", "batch_size")
         auc = weighted_mean(outs, "auc", "batch_size")
@@ -167,12 +132,8 @@ class TransferModel(pl.LightningModule):
         return loss, acc, auc
 
     def training_step(self, batch: torch.Tensor, *args, **kwargs) -> torch.Tensor:
-        """Performs the training step for the linear eval.
-
-        Args:
-            batch (torch.Tensor): a batch of images in the tensor format.
-        Returns:
-            torch.Tensor: cross-entropy loss between the predictions and the ground truth.
+        """
+        Performs the training step for transfer.
         """
         # set encoder to eval mode
         if not self.finetune:
@@ -189,24 +150,15 @@ class TransferModel(pl.LightningModule):
 
     def training_epoch_end(self, outs: List[Dict[str, Any]]):
         loss, acc, auc = self.shared_epoch_end(outs)
-        print("Finished validation with accuracy {}, AUC {}".format(acc, auc))
 
         log = {"transfer/train_loss": loss, "transfer/train_acc": acc, "transfer/train_auc": auc}
         self.log_dict(log, on_epoch=True, sync_dist=True)
 
     def validation_step(self, batch: torch.Tensor, *args, **kwargs) -> Dict[str, Any]:
-        """Performs the validation step for the linear eval.
-
-        Args:
-            batch (torch.Tensor): a batch of images in the tensor format.
-        Returns:
-            Dict[str, Any]:
-                dict with the batch_size (used for averaging),
-                the classification loss and accuracies.
         """
-        # self.encoder.eval()
+        Performs the validation step for transfer.
+        """
         batch_size, loss, acc, auc = self.shared_step(batch)
-
         results = {
             "batch_size": batch_size,
             "loss": loss,
@@ -224,18 +176,10 @@ class TransferModel(pl.LightningModule):
 
     @torch.no_grad()
     def test_step(self, batch: torch.Tensor, *args, **kwargs) -> Dict[str, Any]:
-        """Performs the test step for the linear eval.
-
-        Args:
-            batch (torch.Tensor): a batch of images in the tensor format.
-        Returns:
-            Dict[str, Any]:
-                dict with the batch_size (used for averaging),
-                the classification loss and accuracies.
         """
-
+        Performs the test step for transfer.
+        """
         batch_size, loss, acc, auc = self.shared_step(batch)
-
         results = {
             "batch_size": batch_size,
             "loss": loss,
@@ -246,7 +190,6 @@ class TransferModel(pl.LightningModule):
 
     def test_epoch_end(self, outs: List[Dict[str, Any]]):
         test_loss, acc, auc = self.shared_epoch_end(outs)
-        print("Finished test with accuracy {}, AUC {}".format(acc, auc))
 
         log = {"transfer/test_loss": test_loss, "transfer/test_acc": acc, "transfer/test_auc": auc}
         self.log_dict(log, sync_dist=True)
