@@ -85,6 +85,7 @@ class BaseModel(pl.LightningModule):
         parser.add_argument("--project", type=str)
         parser.add_argument("--entity", type=str)
         parser.add_argument("--wandb", action='store_true', default=False)
+        parser.add_argument("--wandb_key", type=str, default="57578f2c085ea7a785a36d8a38adad6d5e3ee3d5")
 
         parser.add_argument("--encoder_name", type=str, default='resnet')
         parser.add_argument("--output_dim", type=int, default=128)

@@ -1,6 +1,4 @@
-import numpy as np
 import os, sys
-from functools import partial
 from argparse import ArgumentParser
 from typing import Any, Dict, List, Tuple, Callable, Sequence
 
@@ -11,21 +9,16 @@ import matplotlib.pyplot as plt
 from dtw import dtw
 
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
-from torch.autograd import Variable
 
 sys.path.append('../utils')
 from utils.losses import simclr_loss_fn
-from utils.metrics import weighted_mean, Entropy, evaluate_single
+from utils.metrics import weighted_mean
 from .adversarial_model import AdversarialModel
 from .backbones.mlp import mlp
 
 sys.path.append('../data')
-from data.cinc2021.utils_cinc2021 import evaluate_scores
-from data.augs import Normalize, AdvAugmentation, ADVAUG_OUTPUTS
+from data.augs import AdvAugmentation, ADVAUG_OUTPUTS
 
-from .backbones import BACKBONES
 
 class AdvMLPModel(AdversarialModel):
     def __init__(

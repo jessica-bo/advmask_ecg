@@ -50,7 +50,6 @@ def parse_args_pretrain():
     parser.add_argument("--num_devices", type=int, default=1)
     parser.add_argument("--debug", action="store_true", default=False)
     parser.add_argument("--checkpoint_dir", type=str, default="/home/gridsan/ybo/advaug/outputs/")
-    parser.add_argument("--wandb_key", type=str, default="57578f2c085ea7a785a36d8a38adad6d5e3ee3d5")
 
     parser = Trainer.add_argparse_args(parser)
     dataset_args(parser)
@@ -75,7 +74,7 @@ def parse_args_pretrain():
     if args.name != "none":
         wandb_args["name"] = args.name
 
-    os.environ["WANDB_API_KEY"] = args.wandb_key 
+    os.environ["WANDB_API_KEY"] = "57578f2c085ea7a785a36d8a38adad6d5e3ee3d5"#args.wandb_key 
     os.environ["WANDB_MODE"] = "offline" if args.wandb else "disabled"
     wandb.init(**wandb_args)
 
@@ -93,7 +92,6 @@ def parse_args_transfer():
     parser.add_argument("--debug", action="store_true", default=False)
     parser.add_argument("--seed", type=int, default=1)
     parser.add_argument("--checkpoint_dir", type=str, default="/home/gridsan/ybo/advaug/outputs/")
-    parser.add_argument("--wandb_key", type=str, default="57578f2c085ea7a785a36d8a38adad6d5e3ee3d5")
 
     parser = Trainer.add_argparse_args(parser)
     dataset_args(parser)
@@ -114,7 +112,7 @@ def parse_args_transfer():
     if args.name != "none":
         wandb_args["name"] = args.name
 
-    os.environ["WANDB_API_KEY"] = args.wandb_key
+    os.environ["WANDB_API_KEY"] = "57578f2c085ea7a785a36d8a38adad6d5e3ee3d5"#args.wandb_key
     os.environ["WANDB_MODE"] = "offline" if args.wandb else "disabled"
     wandb.init(**wandb_args)
 
