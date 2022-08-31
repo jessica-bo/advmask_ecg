@@ -12,18 +12,17 @@ from pytorch_lightning.callbacks import LearningRateMonitor
 from pytorch_lightning.loggers import WandbLogger
 from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 
-from model.transfer_model import TransferModel
 from utils.checkpointer import Checkpointer
 from setup import parse_args_pretrain, METHODS, NUM_CLASSES, TARGET_TYPE
 
 from data.datamodule import ECGDataModule
 
 # import logging 
-import logging.config
-logging.config.dictConfig({
-    'version': 1,
-    'disable_existing_loggers': True,
-})
+# import logging.config
+# logging.config.dictConfig({
+#     'version': 1,
+#     'disable_existing_loggers': True,
+# })
 
 
 def main():
@@ -31,8 +30,6 @@ def main():
     seed_everything(args.seed)
 
     print(" Beginning pretrain main() with seed {} and arguments {}: \n".format(args.seed, args))
-
-    callbacks = []
 
     MethodClass = METHODS[args.method]
     model = MethodClass(n_classes=NUM_CLASSES[args.dataset], 
@@ -80,7 +77,7 @@ def main():
 
     trainer = Trainer.from_argparse_args(
         args,
-        weights_summary="top",
+        # weights_summary="top",
         logger=wandb_logger if args.wandb else None,
         callbacks=callbacks,
         # plugins=DDPPlugin(find_unused_parameters=False),
@@ -88,10 +85,10 @@ def main():
         checkpoint_callback=False,
         terminate_on_nan=True,
         gpus=args.num_devices,
-        fast_dev_run=args.debug,
+        fast_dev_run=10 if args.debug else False,
         accelerator="gpu",
         strategy="ddp",
-        precision=16,
+        precision=16 if args.method=="adversarial" else 32,
         profiler="simple",
         accumulate_grad_batches=args.accumulate_grad_batches if args.method=="base" else None, # disable for adversarial 
         replace_sampler_ddp=False,

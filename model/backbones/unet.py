@@ -3,13 +3,15 @@ import torch
 
 # count_param(unet1d)=247,077,697 with depth=1, kernel_size=5
 class unet1D(nn.Module):
-    def __init__(self, input_dim, embedding_dim, depth, nmasks):
+    def __init__(self, input_dim, embedding_dim, depth, nmasks, fourier=False, fourier_scale=1.1):
         super(unet1D, self).__init__()
         self.input_dim = input_dim
         self.embedding_dim = embedding_dim
         self.kernel_size = 5
         self.depth = depth
         self.nmasks = nmasks
+        self.fourier = fourier
+        self.fourier_scale = fourier_scale
         
         self.AvgPool1D1 = nn.AvgPool1d(input_dim, stride=5, padding=4)
         self.AvgPool1D2 = nn.AvgPool1d(input_dim, stride=25)
@@ -19,13 +21,12 @@ class unet1D(nn.Module):
         self.layer2 = self.down_layer(self.embedding_dim, int(self.embedding_dim*2), self.kernel_size,5, self.depth)
         self.layer3 = self.down_layer(int(self.embedding_dim*2)+int(self.input_dim), int(self.embedding_dim*3), self.kernel_size,5, self.depth)
         self.layer4 = self.down_layer(int(self.embedding_dim*3)+int(self.input_dim), int(self.embedding_dim*4), self.kernel_size,5, self.depth)
-        self.layer5 = self.down_layer(int(self.embedding_dim*4)+int(self.input_dim), int(self.embedding_dim*5), self.kernel_size,4, self.depth)
 
         self.cbr_up1 = conbr_block(int(self.embedding_dim*7), int(self.embedding_dim*3), self.kernel_size, 1, 1)
         self.cbr_up2 = conbr_block(int(self.embedding_dim*5), int(self.embedding_dim*2), self.kernel_size, 1, 1)
         self.cbr_up3 = conbr_block(int(self.embedding_dim*3), self.embedding_dim, self.kernel_size, 1, 1)
         self.upsample = nn.Upsample(scale_factor=5, mode='nearest')
-        self.upsample1 = nn.Upsample(scale_factor=5, mode='nearest')
+        self.upsamplef = nn.Upsample(scale_factor=self.fourier_scale, mode='nearest')
         
         self.outcov = nn.Conv1d(self.embedding_dim, self.nmasks, kernel_size=self.kernel_size, stride=1,padding=2)
         
@@ -55,7 +56,7 @@ class unet1D(nn.Module):
         
         #############Decoder####################
         
-        up = self.upsample1(x)
+        up = self.upsample(x)
         up = torch.cat([up,out_2],1)
         up = self.cbr_up1(up)
         
@@ -66,10 +67,14 @@ class unet1D(nn.Module):
         up = self.upsample(up)
         up = torch.cat([up,out_0],1)
         up = self.cbr_up3(up)
-        
+
+        if self.fourier:
+            up = self.upsamplef(up)
+
         out = self.outcov(up)
+
         # out = torch.sigmoid(out)
-        if self.nmasks == 1:
+        if self.nmasks == 1 or self.nmasks==12 or self.fourier:
             out = torch.sigmoid(out)
         else:
             out = nn.functional.softmax(out, dim=1) # dim=1 is across the 12 leads 
@@ -78,14 +83,14 @@ class unet1D(nn.Module):
 
 # count_param(unet1dsmall)=65,766,529 with depth=1, kernel_size=5
 class unet1Dsmall(nn.Module):
-    def __init__(self, input_dim, embedding_dim, depth, nmasks):
+    def __init__(self, input_dim, embedding_dim, depth, nmasks, fourier):
         super(unet1Dsmall, self).__init__()
         self.input_dim = input_dim
         self.embedding_dim = embedding_dim
         self.kernel_size = 5
-
         self.depth = depth
         self.nmasks = nmasks
+        self.fourier = fourier
         
         self.AvgPool1D1 = nn.AvgPool1d(input_dim, stride=5, padding=4)
         
@@ -96,7 +101,7 @@ class unet1Dsmall(nn.Module):
         self.cbr_up2 = conbr_block(int(self.embedding_dim*5), int(self.embedding_dim*2), self.kernel_size, 1, 1)
         self.cbr_up3 = conbr_block(int(self.embedding_dim*3), self.embedding_dim, self.kernel_size, 1, 1)
         self.upsample = nn.Upsample(scale_factor=5, mode='nearest')
-        self.upsample1 = nn.Upsample(scale_factor=5, mode='nearest')
+        self.upsamplef = nn.Upsample(scale_factor=1.1, mode='nearest')
         
         self.outcov = nn.Conv1d(self.embedding_dim, self.nmasks, kernel_size=self.kernel_size, stride=1, padding=2)
         
@@ -124,11 +129,13 @@ class unet1Dsmall(nn.Module):
         up = torch.cat([up,out_0],1)
         up = self.cbr_up3(up)
         
-        out = self.outcov(up)
-        # out = torch.sigmoid(out)
-        if self.nmasks == 1:
-            out = torch.sigmoid(out)
+        if self.fourier:
+            up = self.upsamplef(up)
 
+        out = self.outcov(up)
+
+        if self.nmasks == 1 or self.fourier:
+            out = torch.sigmoid(out)
         else:
             out = nn.functional.softmax(out, dim=1) # dim=1 is across the 12 leads 
         

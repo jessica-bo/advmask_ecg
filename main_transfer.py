@@ -67,7 +67,7 @@ def main():
     print(" Loaded datamodule with dataset {}.".format(args.dataset))
 
     callbacks = []
-    early_stop = EarlyStopping(monitor="transfer/val_auc", mode="max", patience=10)
+    early_stop = EarlyStopping(monitor="transfer/val_acc", mode="max", patience=15)
     callbacks.append(early_stop)
     # wandb logging
     if args.wandb:

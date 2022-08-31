@@ -154,10 +154,11 @@ class BaseModel(pl.LightningModule):
         nce_loss = simclr_loss_fn(latent_embeddings=[z1, z2], 
                                   positive_pairing=self.positive_pairing, 
                                   temperature=self.temperature)
+
         if self.simclr_loss_only: 
-            loss = nce_loss / self.accumulate_grad_batches
+            loss = nce_loss # don't need to accumulate batches since Trainer handles it 
         else:
-            loss = (nce_loss + classification_loss) / self.accumulate_grad_batches
+            loss = (nce_loss + classification_loss) 
 
         metrics = {
             "nce_loss": nce_loss,

@@ -16,14 +16,10 @@ from model.transfer_model import TransferModel
 
 from utils.checkpointer import Checkpointer
 
-from model.backbones.resnet import resnet1d18
-from model.backbones.convnet import convnet1d
-from model.backbones.transformer import transformer_d2_h4_dim64l
-
 METHODS = {
     "base": BaseModel,
     "adversarial": AdversarialModel,
-    "advgaussian": AdvMLPModel,
+    "advmlp": AdvMLPModel,
     "transfer": TransferModel,
 }
 
@@ -173,9 +169,9 @@ def parse_args_transfer():
     return args
 
 def dataset_args(parser):
-
     parser.add_argument("--dataset", type=str)
     parser.add_argument("--data_dir", type=str, default="/home/gridsan/ybo/advaug/data/")
+    parser.add_argument("--reduce_dataset", type=str, default="")
 
 def augmentation_args(parser):
     # Gaussian
@@ -204,6 +200,7 @@ def augmentation_args(parser):
 
     # RandomBlockMask
     parser.add_argument("--blockmask", action="store_true", default=False)
+    parser.add_argument("--blockmaskbad", action="store_true", default=False)
     parser.add_argument("--blockmask_ratio", type=float, default=0.2)
 
     # 3KG
@@ -212,6 +209,8 @@ def augmentation_args(parser):
     parser.add_argument("--threeKG_scale", type=float, default=1.5)
     parser.add_argument("--threeKG_mask", type=float, default=0)
 
+    # RandomFourier
+    parser.add_argument("--randfourier", action="store_true", default=False)
 
 def arversarial_augs(parser):
     parser.add_argument("--advmask", action="store_true", default=False)
