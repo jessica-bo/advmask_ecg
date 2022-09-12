@@ -24,12 +24,14 @@ METHODS = {
 NUM_CLASSES = {
     "chapman": 4, 
     "cinc2021": 21,
+    "cinc2020": 19,
     "ptbxl": 12,
 }
 
 TARGET_TYPE = {
     "chapman": "single", 
     "cinc2021": "multilabel",
+    "cinc2020": "multilabel",
     "ptbxl": "multilabel",
 }
 
@@ -49,7 +51,7 @@ def parse_args_pretrain():
     parser.add_argument("--seed", type=int, default=1)
     parser.add_argument("--num_devices", type=int, default=1)
     parser.add_argument("--debug", action="store_true", default=False)
-    parser.add_argument("--checkpoint_dir", type=str, default="/home/gridsan/ybo/advaug/outputs/")
+    parser.add_argument("--checkpoint_dir", type=str, default="/home/gridsan/ybo/advaug/outputs2/")
 
     parser = Trainer.add_argparse_args(parser)
     dataset_args(parser)
@@ -91,7 +93,7 @@ def parse_args_transfer():
     parser.add_argument("--finetune", action="store_true", default=False)
     parser.add_argument("--debug", action="store_true", default=False)
     parser.add_argument("--seed", type=int, default=1)
-    parser.add_argument("--checkpoint_dir", type=str, default="/home/gridsan/ybo/advaug/outputs/")
+    parser.add_argument("--checkpoint_dir", type=str, default="/home/gridsan/ybo/advaug/outputs2/")
 
     parser = Trainer.add_argparse_args(parser)
     dataset_args(parser)

@@ -11,6 +11,11 @@ We adapt parts of our code from the following sources:
 
 
 # Datasets 
+### CinC2020 (Physionet/Computing in Cardiology 2020)
+Download WFDB zipped files (https://moody-challenge.physionet.org/2020/) to `data/cinc2020/raw/` and unzip. 
+
+Generate train/val split by running `python data/cinc2020/save_splits.sh`
+
 ### CinC2021 (Physionet/Computing in Cardiology 2021)
 Download WFDB zipped files (https://moody-challenge.physionet.org/2021/) to `data/cinc2021/raw/` and unzip. Merge WFDB_ChapmanShaoxing and WFDB_Ningbo to a folder named WFDB_ShaoxingUniv.
 

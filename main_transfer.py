@@ -36,10 +36,12 @@ def main():
 
         with open(args_path) as f:
             method_args = json.load(f)
-            method_args["adv_lr"] = 0.0001
+            method_args.pop("augmentation_model", None)
         
-        method = "advmask" if method_args["method"]=="adversarial" else method_args["method"]
-        original_model = METHODS[method].load_from_checkpoint(ckpt_path, strict=False, **(method_args))        
+        method = method_args["method"] 
+
+        original_model = METHODS[method](**(method_args))
+        original_model.load_state_dict(torch.load(ckpt_path))
         backbone = original_model.encoder
         print("Loaded pretrained model {}.".format(args.pretrained_feature_extractor))
 

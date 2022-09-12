@@ -11,11 +11,6 @@ import torch.nn.functional as F
 sys.path.append('../utils')
 from utils.metrics import weighted_mean, evaluate_single
 
-sys.path.append('../data')
-from data.cinc2021.utils_cinc2021 import evaluate_scores
-
-from .backbones import BACKBONES
-
 
 class TransferModel(pl.LightningModule):
     def __init__(
@@ -34,7 +29,6 @@ class TransferModel(pl.LightningModule):
         Linear evaluation (LE) or finetuning (FT).
         """
         super().__init__()
-        self.save_hyperparameters()
 
         self.encoder = encoder
         self.target_type = target_type
@@ -59,6 +53,8 @@ class TransferModel(pl.LightningModule):
             self.loss_fn = F.cross_entropy
         
         self.eval_fn = evaluate_single
+        
+        self.save_hyperparameters()
 
     @staticmethod
     def add_model_specific_args(parent_parser: ArgumentParser) -> ArgumentParser:

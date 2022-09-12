@@ -4,25 +4,12 @@ from functools import partial
 from argparse import ArgumentParser
 from typing import Any, Dict, List, Tuple, Callable, Sequence
 
-import wandb
-import PIL
-import matplotlib.pyplot as plt
-
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
-
 from scipy.signal import stft, istft
 
-sys.path.append('../utils')
-from utils.losses import simclr_loss_fn
-from utils.metrics import weighted_mean 
 from .base_model import BaseModel
-from .backbones.unet import unet1Dsmall, unet1D 
-from .backbones import BACKBONES
 
 sys.path.append('../data')
-from data.cinc2021.utils_cinc2021 import evaluate_scores
 from data.augs import Normalize
 
 
@@ -46,7 +33,7 @@ class AdversarialModel(BaseModel):
         augmentation_model,
         accumulate_grad_batches,
         **kwargs):
-        
+
         super().__init__(
             encoder_name,
             n_classes,
@@ -62,8 +49,6 @@ class AdversarialModel(BaseModel):
             simclr_loss_only,
             **kwargs)
 
-        self.save_hyperparameters()
-
         self.accumulate_grad_batches = 1 if accumulate_grad_batches==None else accumulate_grad_batches
         self.lr = lr * self.accumulate_grad_batches
         
@@ -72,6 +57,8 @@ class AdversarialModel(BaseModel):
         self.normalize = Normalize()
 
         self.augmenter = augmentation_model
+        
+        self.save_hyperparameters()
         
     @staticmethod
     def add_model_specific_args(parent_parser: ArgumentParser) -> ArgumentParser:

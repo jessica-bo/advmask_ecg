@@ -15,6 +15,7 @@ data/cinc2021/*/
 data/cinc2021/raw
 data/cinc2021/save_splits.sh
 outputs/
+outputs2/
 advaug.code-workspace
 test*
 scripts/

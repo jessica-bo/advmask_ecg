@@ -19,11 +19,6 @@ from utils.losses import simclr_loss_fn
 from utils.metrics import weighted_mean 
 from .adversarial_model import AdversarialModel
 from .backbones.unet import unet1D 
-from .backbones import BACKBONES
-
-sys.path.append('../data')
-from data.cinc2021.utils_cinc2021 import evaluate_scores
-from data.augs import Normalize
 
 
 class AdvMaskModel(AdversarialModel):
@@ -43,16 +38,15 @@ class AdvMaskModel(AdversarialModel):
         simclr_loss_only,
         adv_lr,
         train_mask_interval,
-        nmasks=1,
-        unet_depth=1, 
-        alpha_sparsity=0.1,
-        ratio=1,
-        fourier=False,
+        nmasks,
+        unet_depth, 
+        alpha_sparsity,
+        ratio,
+        dropout,
         accumulate_grad_batches=4,
-        dropout=False,
+        fourier=False,
         **kwargs):
 
-        
         # Options for adversarially masking the STFT
         self.fourier = fourier
         self.fourier_scale = 1.1 if positive_pairing=="SimCLR" else 1.2
@@ -64,7 +58,7 @@ class AdvMaskModel(AdversarialModel):
         self.dropout = dropout
 
         augmentation_model = unet1D(input_dim=12, embedding_dim=512, depth=self.unet_depth, nmasks=self.nmasks, fourier=self.fourier, fourier_scale=self.fourier_scale)
-        
+
         super().__init__(
             encoder_name,
             n_classes,

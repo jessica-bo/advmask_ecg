@@ -22,6 +22,9 @@ embedding_dim = 512
 lr = 0.0001
 adv_lr = 0.0001
 
+wandb_name = "your_account"
+project_name = "test_project"
+
 for seed in seeds: 
     for unet_depth in unet_depths:
         for nmasks in nmaskss:
@@ -56,12 +59,12 @@ for seed in seeds:
                                                 --method advmask \
                                                 --seed {} \
                                                 --num_devices {} \
-                                                --dataset cinc2021 \
+                                                --dataset cinc2020 \
                                                 --max_epochs 150 \
                                                 --name {}/{} \
-                                                --project advaug_test \
-                                                --entity jessica-bo \
                                                 --wandb \
+                                                --entity {} \
+                                                --project {} \
                                                 --lr {} \
                                                 --adv_lr {} \
                                                 --batch_size {} \
@@ -72,8 +75,9 @@ for seed in seeds:
                                                 --unet_depth {} \
                                                 --nmasks {} \
                                                 --simclr_loss_only \
-                                                --positive_pairing {} \n".format(seed, num_devices, sweep_name, hyperparams_name, lr, adv_lr, 
-                                                                                 batch_size, accumulate_grad_batch, embedding_dim, alpha_sparsity, 
+                                                --positive_pairing {} \n".format(seed, num_devices, sweep_name, hyperparams_name, 
+                                                                                 wandb_name, project_name, lr, adv_lr, batch_size, 
+                                                                                 accumulate_grad_batch, embedding_dim, alpha_sparsity, 
                                                                                  ratio, unet_depth, nmasks, positive_pairing))
 
                             os.system("sbatch %s" %job_file)

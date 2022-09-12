@@ -19,6 +19,7 @@ from utils.metrics import weighted_mean, evaluate_single
 
 sys.path.append('../data')
 from data.cinc2021.utils_cinc2021 import evaluate_scores
+from data.cinc2020.utils_cinc2020 import evaluate_12ECG_score
 
 from .backbones import BACKBONES
 
@@ -40,7 +41,6 @@ class BaseModel(pl.LightningModule):
         **kwargs):
         super().__init__()
 
-        self.save_hyperparameters()
         self.encoder_name = encoder_name
         self.encoder = BACKBONES[self.encoder_name](**kwargs)
         print("Loaded {} backbone.".format(self.encoder_name))
@@ -63,10 +63,12 @@ class BaseModel(pl.LightningModule):
 
         if target_type == 'multilabel':
             self.loss_fn = torch.nn.BCEWithLogitsLoss()
-            self.eval_fn = evaluate_scores
+            self.eval_fn = evaluate_12ECG_score#evaluate_scores
         elif target_type == "single":
             self.loss_fn = F.cross_entropy
             self.eval_fn = evaluate_single
+    
+        self.save_hyperparameters()
 
     @staticmethod
     def add_model_specific_args(parent_parser: ArgumentParser) -> ArgumentParser:

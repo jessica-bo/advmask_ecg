@@ -63,7 +63,7 @@ class AdvMLPModel(AdversarialModel):
             adv_lr,
             train_mask_interval,
             augmentation_model,
-            accumulate_grad_batches=4,
+            accumulate_grad_batches,
             **kwargs)
 
         self.save_hyperparameters()

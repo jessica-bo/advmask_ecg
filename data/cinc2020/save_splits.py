@@ -1,53 +1,25 @@
-import numpy as np, os, sys, joblib
-from scipy.io import loadmat
-from glob import iglob
+import os
+import numpy as np
 
-    
-def load_challenge_data(header_file):
-    with open(header_file, 'r') as f:
-        header = f.readlines()
-    mat_file = header_file.replace('.hea', '.mat')
-    x = loadmat(mat_file)
-    recording = np.asarray(x['val'], dtype=np.float64)
-    return recording, header
+import dataset_cinc2020
+import cfg_cinc2020
 
-def get_classes(input_directory, filenames):
-    classes = set()
-    for filename in filenames:
-        with open(filename, 'r') as f:
-            for l in f:
-                if l.startswith('#Dx'):
-                    tmp = l.split(': ')[1].split(',')
-                    for c in tmp:
-                        classes.add(c.strip())
-    return sorted(classes)
-    
 if __name__ == "__main__":
-    input_directory = "/home/gridsan/ybo/advaug/data/cinc2020/raw/training"
-    header_files = []
+    seed = 42
+    cfg_cinc2020.set_seed(seed)
 
-    level3 = iglob("/home/gridsan/ybo/advaug/data/cinc2020/raw/training/*/*/*")
-    for f in level3:
-        if not f.lower().startswith('.') and f.lower().endswith('hea') and os.path.isfile(f):
-            header_files.append(f)
+    save_path = "./seed{}".format(seed)
+    if not os.path.exists(save_path):
+        os.makedirs(save_path)
 
-    classes = get_classes(input_directory, header_files)
-    num_classes = len(classes)
-    num_files = len(header_files)
+    train = dataset_cinc2020.CINC2020Dataset(cfg_cinc2020.TrainCfg, training=True)
+    train._load_all_data()
 
-    recordings = list()
-    headers = list()
+    train._signals.dump(os.path.join(save_path, "X_train.npy"), protocol=4)
+    train._labels.dump(os.path.join(save_path, "y_train.npy"), protocol=4)
 
-    for i in range(num_files):
-        recording, header = load_challenge_data(header_files[i])
-        recordings.append(recording)
-        headers.append(header)
+    test = dataset_cinc2020.CINC2020Dataset(cfg_cinc2020.TrainCfg, training=False)
+    test._load_all_data()
 
-    recordings = np.array(recordings)
-    headers = np.array(headers)
-
-    recordings.dump("recordings.npy", protocol=4)
-    headers.dump("headers.npy", protocol=4)
-
-
-    
+    test._signals.dump(os.path.join(save_path, "X_val.npy"), protocol=4)
+    test._labels.dump(os.path.join(save_path, "y_val.npy"), protocol=4)
