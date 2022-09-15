@@ -244,6 +244,8 @@ class AdvMaskModel(AdversarialModel):
         NoneType = type(None)
         if not isinstance(self.logger, NoneType):
             self.logger.experiment.log({"masked_image": wandb_image})
+        
+        plt.close('all')
 
     def log_stft(self, x_orig, x_transformed, target):
         fig, axs = plt.subplots(2, 1, figsize=(15, 12))
@@ -258,3 +260,5 @@ class AdvMaskModel(AdversarialModel):
         NoneType = type(None)
         if not isinstance(self.logger, NoneType):
             self.logger.experiment.log({"masked_image": wandb_image})
+
+        plt.close('all')

@@ -122,11 +122,3 @@ class AdversarialModel(BaseModel):
         auc = out["auc"]
         return class_loss, batch_size, acc, auc
 
-    # def validation_step(self, batch: List[torch.Tensor], batch_idx: int) -> Dict[str, Any]:
-    #     # call parent class to get results from standard metrics
-    #     base_metrics = super().validation_step(batch, batch_idx)
-    #     return {**base_metrics}
-
-    # def validation_epoch_end(self, outs: List[Dict[str, Any]]):
-    #     super().validation_epoch_end(outs)
-

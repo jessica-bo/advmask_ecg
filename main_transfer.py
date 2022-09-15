@@ -36,12 +36,12 @@ def main():
 
         with open(args_path) as f:
             method_args = json.load(f)
-            method_args.pop("augmentation_model", None)
         
         method = method_args["method"] 
-
-        original_model = METHODS[method](**(method_args))
-        original_model.load_state_dict(torch.load(ckpt_path))
+        original_model = METHODS[method](n_classes=NUM_CLASSES["cinc2020"], 
+                                         target_type=NUM_CLASSES["cinc2020"], 
+                                         **(method_args))
+        original_model.load_state_dict(torch.load(ckpt_path)['state_dict'])
         backbone = original_model.encoder
         print("Loaded pretrained model {}.".format(args.pretrained_feature_extractor))
 
