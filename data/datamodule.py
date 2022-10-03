@@ -1,16 +1,13 @@
-import os, sys
-import random
-from typing import Any, Callable, Iterable, List, Optional, Sequence, Type, Union
+import os
 from collections import Counter
 
 import torch
-import torchvision
-from torch.utils.data import DataLoader, random_split, DistributedSampler, WeightedRandomSampler, RandomSampler
+from torch.utils.data import DataLoader, DistributedSampler, WeightedRandomSampler, RandomSampler
 
-from pytorch_lightning import LightningDataModule, LightningModule, Trainer
-import pytorch_lightning as pl
+from pytorch_lightning import LightningDataModule
 
 from .dataset_wrapper import DatasetWrapper
+from .style_dataset_wrapper import StyleDatasetWrapper
 
 class ECGDataModule(LightningDataModule):
     def __init__(
@@ -26,29 +23,37 @@ class ECGDataModule(LightningDataModule):
         debug=False,
         reduce_dataset="",
         nleads=12, 
+        style_dataset="",
+        style_alpha=0.5,
+        task="",
         **kwargs
     ):
         super().__init__()
 
-        self.dataset = dataset
-        self.db_dir = os.path.join(data_dir, self.dataset)   
+        self.dataset = dataset 
+        self.style_dataset = style_dataset
+        self.style_alpha = style_alpha
+        self.method = method
+        self.data_dir = data_dir
         self.debug = debug
         self.reduce_dataset = reduce_dataset
-
-        if self.debug:
-            # Load smaller validation dataset to speed up debugging
-            self.data_train = DatasetWrapper(self.db_dir, method, "val", seed, positive_pairing=positive_pairing, nleads=nleads, reduce_dataset=reduce_dataset, **kwargs)
-        else:
-            self.data_train = DatasetWrapper(self.db_dir, method, "train", seed, positive_pairing=positive_pairing, nleads=nleads, reduce_dataset=reduce_dataset, **kwargs)
-
-        self.data_val = DatasetWrapper(self.db_dir, "transfer", "val", seed, positive_pairing=positive_pairing, nleads=nleads, reduce_dataset=reduce_dataset, **kwargs)
-
-        if do_test:
-            self.data_test = DatasetWrapper(self.db_dir, "transfer", "test", seed, positive_pairing=positive_pairing, nleads=nleads, **kwargs)
-
+        self.task = task
         self.batch_size = batch_size
         self.num_workers = num_workers
- 
+
+        self.phase = "val" if self.debug else "train"
+
+        if self.style_dataset:
+            self.data_train = StyleDatasetWrapper(self.data_dir, self.dataset, self.style_dataset, self.style_alpha, self.method, self.phase, self.task, seed, positive_pairing=positive_pairing, nleads=nleads, reduce_dataset=reduce_dataset, **kwargs)
+        else:
+            self.data_train = DatasetWrapper(self.data_dir, self.dataset, self.method, self.phase, self.task, seed, positive_pairing=positive_pairing, nleads=nleads, reduce_dataset=reduce_dataset, **kwargs)
+   
+        self.data_val = DatasetWrapper(self.data_dir, self.dataset, "transfer", "val", self.task, seed, positive_pairing=positive_pairing, nleads=nleads, reduce_dataset=reduce_dataset, **kwargs)
+
+        if do_test:
+            self.data_test = DatasetWrapper(self.data_dir, self.dataset, "transfer", "test", self.task, seed, positive_pairing=positive_pairing, nleads=nleads, **kwargs)
+
+
     def train_dataloader(self):
         '''returns training dataloader'''
         sampler = self.get_sampler()
@@ -63,7 +68,7 @@ class ECGDataModule(LightningDataModule):
         return DataLoader(self.data_test, batch_size=self.batch_size, shuffle=False, num_workers=self.num_workers, pin_memory=True)
 
     def get_sampler(self):
-        if self.dataset == "chapman":
+        if self.dataset == "chapman" and self.get_type() != "regression":
             class_dist = dict(Counter(self.data_train.y))
             class_weights = [1/v for (k,v) in class_dist.items()]
             sample_weights = torch.Tensor([class_weights[t] for t in self.data_train.y])
@@ -75,3 +80,21 @@ class ECGDataModule(LightningDataModule):
             return sampler
         else:
             return DistributedSampler(sampler)
+
+    # For Chapman
+    def get_nclass(self):
+        if self.task == "age":
+            return 1
+        elif self.task == "gender":
+            return 1
+        elif self.task == "":
+            return 4
+
+    # For Chapman
+    def get_type(self):
+        if self.task == "age":
+            return "regression"
+        elif self.task == "gender":
+            return "binary"
+        elif self.task == "":
+            return "single"

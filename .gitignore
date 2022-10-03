@@ -7,13 +7,14 @@ data/cpsc2021/
 data/ptbxl/
 data/chapman/*/
 data/chapman/raw
-data/chapman/save_splits.sh
+data/chapman/save_splits*.sh*
 data/cinc2020/*/
 data/cinc2020/raw
-data/cinc2020/save_splits.sh
+data/cinc2020/save_splits.sh*
 data/cinc2021/*/
 data/cinc2021/raw
-data/cinc2021/save_splits.sh
+data/cinc2021/save_splits.sh*
+data/EEG/
 outputs/
 outputs2/
 advaug.code-workspace

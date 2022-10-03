@@ -236,6 +236,21 @@ class RandomFourier(object):
 
         return new_sample
 
+class PeakMask(object):
+
+    def __call__(self, sample):
+        mean = np.mean(sample)
+        avg_leads = np.mean(sample, axis=0)
+        mask = np.where(avg_leads>mean, 0, 1)
+
+        if np.random.rand() > 0.5:
+            mask = 1 - mask
+
+        new_sample = mask*sample
+
+        return new_sample
+
+
 class ThreeKGTransform:
     def __init__(
         self,
@@ -314,6 +329,7 @@ class CollatedTransform:
         threeKG_angle=45,
         threeKG_scale=1.5, 
         randfourier=False,
+        peakmask=False,
         **kwargs,
     ):
         self.transform = transforms.Compose([])
@@ -346,7 +362,9 @@ class CollatedTransform:
             self.transform = transforms.Compose([self.transform, ThreeKGTransform(angle=threeKG_angle,
                                                                                   scale=threeKG_scale)])
         if randfourier: 
-            self.transform = transforms.Compose([self.transform, RandomFourier()])        
+            self.transform = transforms.Compose([self.transform, RandomFourier()])     
+        if peakmask: 
+            self.transform = transforms.Compose([self.transform, PeakMask()])        
 
         self.transform = transforms.Compose([self.transform, 
                                              ToTensor1D(),

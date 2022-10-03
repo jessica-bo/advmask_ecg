@@ -6,6 +6,7 @@ import numpy as np
 from itertools import combinations
 from sklearn.preprocessing import LabelBinarizer
 from sklearn.metrics import roc_auc_score
+from sklearn.metrics import r2_score
 from typing import Dict, List, Sequence
 
 import warnings
@@ -16,8 +17,17 @@ Adapted from @danikiyasseh
 Source: https://github.com/danikiyasseh/CLOCS/blob/master/prepare_miscellaneous.py
 """
 
-def evaluate_single(labels_list,outputs_list,classification="normal"):
-    return calculate_auc(outputs_list,labels_list),calculate_acc(outputs_list,labels_list,classification=classification)
+def evaluate_single(labels_list,outputs_list,classification="single"):
+    if classification == "regression":
+        return 0, r2_score(labels_list, np.squeeze(outputs_list))
+    return calculate_auc(outputs_list,labels_list), calculate_acc(outputs_list,labels_list,classification=classification)
+
+def calculate_r_squared(outputs_list,labels_list):
+    target_mean = np.mean(labels_list)
+    ss_tot = np.sum((labels_list - target_mean) ** 2)
+    ss_res = np.sum((labels_list - outputs_list) ** 2)
+    r2 = 1 - ss_res / ss_tot
+    return r2
 
 def calculate_auc(outputs_list,labels_list):
     """
@@ -28,12 +38,11 @@ def calculate_auc(outputs_list,labels_list):
     all_auc = []
     for i in range(labels_ohe.shape[1]):
         auc = roc_auc_score(labels_ohe[:,i],outputs_list[:,i])
-        # print("auc {} of {}".format(auc, i))
         all_auc.append(auc)
     epoch_auroc = np.mean(all_auc)
     return epoch_auroc
 
-def calculate_acc(outputs_list,labels_list,classification="normal"):
+def calculate_acc(outputs_list,labels_list,classification="single"):
     if classification == 'multilabel': 
         """ Convert Preds to Multi-Hot Vector """
         preds_list = np.where(outputs_list>0.5,1,0)
@@ -43,6 +52,10 @@ def calculate_acc(outputs_list,labels_list,classification="normal"):
         labels_list = [np.where(multi_hot_vector)[0] for multi_hot_vector in labels_list]
         """ What Proportion of Labels Did you Get Right """
         acc = np.array([np.isin(preds,labels).sum() for preds,labels in zip(preds_list,labels_list)]).sum()/(len(np.concatenate(preds_list)))        
+    elif classification == "binary":
+        preds_list = np.squeeze(np.where(outputs_list>0.5,1,0))
+        ncorrect_preds = (preds_list == labels_list).sum().item()
+        acc = ncorrect_preds/preds_list.shape[0]
     else: #normal single label setting 
         preds_list = torch.argmax(torch.tensor(outputs_list),1)
         ncorrect_preds = (preds_list == torch.tensor(labels_list)).sum().item()

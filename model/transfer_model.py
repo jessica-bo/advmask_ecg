@@ -51,9 +51,13 @@ class TransferModel(pl.LightningModule):
             self.loss_fn = torch.nn.BCELoss() 
         elif self.target_type == "single":
             self.loss_fn = F.cross_entropy
+        elif self.target_type == "binary":
+            self.loss_fn = torch.nn.BCEWithLogitsLoss() 
+        elif self.target_type == "regression":
+            self.loss_fn = torch.nn.MSELoss()
         
         self.eval_fn = evaluate_single
-        
+
         self.save_hyperparameters()
 
     @staticmethod
@@ -111,10 +115,10 @@ class TransferModel(pl.LightningModule):
         batch_size = X.size(0)
 
         out = self(X)["logits"]
-        target = target.type(torch.float) if self.target_type == "multilabel" else target
-        loss = self.loss_fn(out, target)
+        target = target.type(torch.float) if (self.target_type in ["multilabel", "binary", "regression"]) else target
+        loss = self.loss_fn(out.squeeze(), target)
 
-        auc, acc = self.eval_fn(target.cpu().detach().numpy(), out.cpu().detach().numpy())
+        auc, acc = self.eval_fn(target.cpu().detach().numpy(), out.cpu().detach().numpy(), classification=self.target_type)
         
         return batch_size, loss, acc, auc
 

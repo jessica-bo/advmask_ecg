@@ -211,7 +211,6 @@ class BaseModel(pl.LightningModule):
         val_class_loss = weighted_mean(outs, "val_class_loss", "batch_size")
         acc = weighted_mean(outs, "val_acc", "batch_size")
         auc = weighted_mean(outs, "val_auc", "batch_size")
-        print("Finished validation with accuracy {}, AUC {}".format(acc, auc))
         
         metrics = {
             "val_class_loss": val_class_loss,

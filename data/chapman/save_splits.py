@@ -21,12 +21,12 @@ dates.name = 'Dates'
 dates = pd.to_datetime(dates)
 database_with_dates = pd.concat((database,dates),1)
 
-
 """ Combine Rhythm Labels """
 old_rhythms = ['AF','SVT','ST','AT','AVNRT','AVRT','SAAWR','SI','SA']
 new_rhythms = ['AFIB','GSVT','GSVT','GSVT','GSVT','GSVT','GSVT','SR','SR']
 database_with_dates['Rhythm'] = database_with_dates['Rhythm'].replace(old_rhythms,new_rhythms)
-unique_labels = database_with_dates['Rhythm'].value_counts().index.tolist()
+# unique_labels = database_with_dates['Rhythm'].value_counts().index.tolist()
+unique_labels = database_with_dates['Gender'].value_counts().index.tolist()
 enc.fit(unique_labels)
 
 """ Combine Dates """
@@ -46,10 +46,10 @@ database_with_dates['Dates'] = database_with_dates['Dates'].apply(combine_dates)
 """ Patients in Each Task and Phase """
 phases = ['train','val','test']
 phase_fractions = [0.8, 0.1, 0.1]
-seed = 42
+seed = 10
 phase_fractions_dict = dict(zip(phases,phase_fractions))
 term = 'All Terms'
-reduce_dataset = 0.01
+reduce_dataset = 1
 
 term_phase_patients = dict()
 term_patients = database_with_dates['FileName'][database_with_dates['Dates'] == "All Terms"]
@@ -89,11 +89,13 @@ for phase in phases:
         lead_indices = np.where(np.in1d(leads,desired_leads))[0]
         data_resampled = data_resampled[lead_indices,:] #12x2500
         
-        label = database_with_dates['Rhythm'][database_with_dates['FileName']==patient]
-        encoded_label = enc.transform(label).item()
+        # label = database_with_dates['Rhythm'][database_with_dates['FileName']==patient]
+        label = database_with_dates['Age'][database_with_dates['FileName']==patient]
+        # encoded_label = enc.transform(label).item()
         
         current_inputs.append(data_resampled)
-        current_outputs.append([encoded_label for _ in range(data_resampled.shape[0])])
+        # current_outputs.append([encoded_label for _ in range(data_resampled.shape[0])])
+        current_outputs.append([label for _ in range(data_resampled.shape[0])])
         current_pids.append([patient for _ in range(data_resampled.shape[0])])
 
     inputs_dict[phase] = np.array(current_inputs)
@@ -124,7 +126,7 @@ def save_final_frames_and_labels(frames_dict,labels_dict,save_path):
     labels_dict['val'][:,0].dump(os.path.join(save_path, "{}y_val.npy".format(reduce_dataset)), protocol=4)
     labels_dict['test'][:,0].dump(os.path.join(save_path, "{}y_test.npy".format(reduce_dataset)), protocol=4)
 
-save_path = "./seed{}".format(seed)
+save_path = "./seed{}_gender".format(seed)
 if not os.path.exists(save_path):
     os.makedirs(save_path)
 save_final_frames_and_labels(inputs_dict,outputs_dict,save_path)

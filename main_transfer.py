@@ -38,8 +38,8 @@ def main():
             method_args = json.load(f)
         
         method = method_args["method"] 
-        original_model = METHODS[method](n_classes=NUM_CLASSES["cinc2020"], 
-                                         target_type=NUM_CLASSES["cinc2020"], 
+        original_model = METHODS[method](n_classes=NUM_CLASSES["cinc2021"], 
+                                         target_type=NUM_CLASSES["cinc2021"], 
                                          **(method_args))
         original_model.load_state_dict(torch.load(ckpt_path)['state_dict'])
         backbone = original_model.encoder
@@ -48,13 +48,6 @@ def main():
     else:
         backbone = BACKBONES[args.backbone](**vars(args))
         print("Loaded scratch model.")
-
-    MethodClass = TransferModel
-    model = MethodClass(encoder=backbone, 
-                        n_classes=NUM_CLASSES[args.dataset], 
-                        target_type=TARGET_TYPE[args.dataset], 
-                        **args.__dict__)
-    print(ModelSummary(model, max_depth=1))
     
     data_module= ECGDataModule(method="transfer", 
                                positive_pairing=None, 
@@ -62,9 +55,15 @@ def main():
                                **args.__dict__)
     print("Loaded datamodule with dataset {}.".format(args.dataset))
 
+    MethodClass = TransferModel
+    model = MethodClass(encoder=backbone, 
+                        n_classes=data_module.get_nclass(), 
+                        target_type=data_module.get_type(), 
+                        **args.__dict__)
+    print(ModelSummary(model, max_depth=1))
+
     callbacks = []
     early_stop = EarlyStopping(monitor="transfer/val_acc", mode="max", patience=15)
-    print("Early stopping with val_acc.")
     callbacks.append(early_stop)
 
     if args.wandb:
@@ -76,7 +75,7 @@ def main():
 
         ckpt = Checkpointer(
             args,
-            logdir=os.path.join(args.checkpoint_dir, args.name, "seed{}".format(args.seed)),
+            logdir=os.path.join(args.checkpoint_dir, args.name, "seed{}{}".format(args.seed, args.task)),
             frequency=args.checkpoint_frequency,
         )
         callbacks.append(ckpt)

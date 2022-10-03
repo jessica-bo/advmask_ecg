@@ -182,3 +182,4 @@ class AdvMLPModel(AdversarialModel):
         if not isinstance(self.logger, NoneType):
             self.logger.experiment.log({"masked_image": wandb_image})
 
+        plt.close('all')

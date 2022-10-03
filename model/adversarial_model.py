@@ -92,11 +92,6 @@ class AdversarialModel(BaseModel):
 
         return optimizer
 
-    def forward(self, X: torch.tensor, *args, **kwargs) -> Dict[str, Any]:
-        out = super().forward(X, *args, **kwargs)
-        z = self.projector(out["feats"])
-        return {**out, "z": z}
-
     def flip_grad(self, status):
         """
         Sets requires_grad of inpainter (inference) model as True or False.
