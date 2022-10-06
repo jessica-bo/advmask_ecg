@@ -7,6 +7,7 @@ from itertools import combinations
 from sklearn.preprocessing import LabelBinarizer
 from sklearn.metrics import roc_auc_score
 from sklearn.metrics import r2_score
+from ignite import metrics
 from typing import Dict, List, Sequence
 
 import warnings
@@ -19,15 +20,10 @@ Source: https://github.com/danikiyasseh/CLOCS/blob/master/prepare_miscellaneous.
 
 def evaluate_single(labels_list,outputs_list,classification="single"):
     if classification == "regression":
-        return 0, r2_score(labels_list, np.squeeze(outputs_list))
+        # return 0, r2_score(labels_list, np.squeeze(outputs_list))
+        return np.mean(np.abs(labels_list - outputs_list)), np.mean(np.square(labels_list - outputs_list))
     return calculate_auc(outputs_list,labels_list), calculate_acc(outputs_list,labels_list,classification=classification)
 
-def calculate_r_squared(outputs_list,labels_list):
-    target_mean = np.mean(labels_list)
-    ss_tot = np.sum((labels_list - target_mean) ** 2)
-    ss_res = np.sum((labels_list - outputs_list) ** 2)
-    r2 = 1 - ss_res / ss_tot
-    return r2
 
 def calculate_auc(outputs_list,labels_list):
     """

@@ -9,6 +9,8 @@ import os
 import torch
 torch.cuda.empty_cache()
 
+import numpy as np
+
 from pytorch_lightning import Trainer, seed_everything
 from pytorch_lightning.tuner.tuning import Tuner
 from pytorch_lightning.plugins import DDPPlugin
@@ -25,6 +27,13 @@ def main():
     args = parse_args_pretrain()
     seed_everything(args.seed)
     print(" Beginning pretrain main() with seed {} and arguments {}: \n".format(args.seed, args))
+
+    np.random.seed(args.seed)
+    torch.manual_seed(args.seed)
+    torch.cuda.manual_seed_all(args.seed)
+    torch.cuda.manual_seed(args.seed)
+    torch.backends.cudnn.deterministic=True
+    torch.backends.cudnn.benchmark=False
 
     MethodClass = METHODS[args.method]
     model = MethodClass(n_classes=NUM_CLASSES[args.dataset], 

@@ -80,7 +80,6 @@ class AdvMaskModel(AdversarialModel):
 
         self.save_hyperparameters()
         
-        
     @staticmethod
     def add_model_specific_args(parent_parser: ArgumentParser) -> ArgumentParser:
         parent_parser = super(AdvMaskModel, AdvMaskModel).add_model_specific_args(parent_parser)
@@ -131,6 +130,7 @@ class AdvMaskModel(AdversarialModel):
             self.manual_backward(combined_mask_loss) 
             if (batch_idx + 1) % self.accumulate_grad_batches==0:
                 opt_m.step()
+                # print(self.augmenter.cbr_up2.conv1.bias.grad)
                 opt_m.zero_grad()
 
         metrics = {
@@ -165,14 +165,16 @@ class AdvMaskModel(AdversarialModel):
         elif self.nmasks==12:
             # if N=12, the output is a sigmoid so we just want to keep any values over 0.5 
             thres = 0.5
-            mask = (masks > thres).float() 
+            mask = 1. / (1+ torch.exp(-100 * (mask-0.5)))
             x_transformed = x_transformed * (1-mask)
 
         else: 
             # randomly choose one mask for each sample in the batch
             chosen_mask = torch.randint(low=0, high=self.nmasks, size=(actual_batch_size,))
             mask = torch.stack([masks[idx, c, ...] for idx, c in enumerate(chosen_mask)], dim=0).unsqueeze(1)
-            mask = (mask > thres).float().repeat(1, 12, 1) # 12 layers of the same masks 
+            # mask = (mask > thres).float().repeat(1, 12, 1)  
+            # mask = 1./(1+torch.exp(-1e2*(mask-0.5)))
+            mask = 1. / (1+ torch.exp(-100 * (mask-0.5)))
 
             if self.dropout > 0: #0 is no dropout, 1 is full dropout 
                 dropout_mask = torch.zeros(mask.shape).cuda()
@@ -210,6 +212,9 @@ class AdvMaskModel(AdversarialModel):
         # compute mask penalty
         mask_penalty = masks.sum([-1]) / masks.shape[-1]
         mask_loss = (self.alpha1 * (1 / (torch.sin(self.ratio * mask_penalty * np.pi) + 1e-10)).mean(0).sum(0))
+        # print(masks)
+        # mask_loss = torch.norm(masks, 1)
+        # print(mask_loss)
 
         return mask_nce_loss, mask_loss
 

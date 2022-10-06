@@ -755,6 +755,9 @@ def set_seed(seed: int) -> NoReturn:
     DEFAULTS.RNG_sample = partial(DEFAULTS.RNG.choice, replace=False, shuffle=False)
     DEFAULTS.RNG_randint = partial(DEFAULTS.RNG.integers, endpoint=True)
 
-    random.seed(seed)
-    torch.manual_seed(seed)
-    torch.cuda.manual_seed(seed)
+    np.random.seed(123)
+    torch.manual_seed(123)
+    torch.cuda.manual_seed_all(123)
+    torch.cuda.manual_seed(123)
+    torch.backends.cudnn.deterministic=True
+    torch.backends.cudnn.benchmark=False

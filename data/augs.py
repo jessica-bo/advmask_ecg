@@ -288,7 +288,7 @@ class ThreeKGTransform:
 
         if self.angle:
             angles = np.random.uniform(-self.angle, self.angle, size=3)
-            RT = R.from_euler('zyx', angles, degrees=True).as_dcm()
+            RT = R.from_euler('zyx', angles, degrees=True).as_matrix()
         else:
             RT = np.diag((1,1,1))
         

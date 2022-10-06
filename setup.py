@@ -53,7 +53,7 @@ def parse_args_pretrain():
     parser.add_argument("--seed", type=int, default=1)
     parser.add_argument("--num_devices", type=int, default=1)
     parser.add_argument("--debug", action="store_true", default=False)
-    parser.add_argument("--checkpoint_dir", type=str, default="/home/gridsan/ybo/advaug/outputs2/")
+    parser.add_argument("--checkpoint_dir", type=str, default="/home/gridsan/ybo/advaug/outputs/")
 
     parser = Trainer.add_argparse_args(parser)
     dataset_args(parser)

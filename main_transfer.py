@@ -8,6 +8,7 @@ import os
 import json
 from pathlib import Path
 
+import numpy as np
 import torch
 torch.cuda.empty_cache()
 
@@ -28,6 +29,12 @@ def main():
     args = parse_args_transfer()
     seed_everything(args.seed)
     print(" Beginning transfer main() with seed {} and arguments \n {}: \n".format(args.seed, args))
+    np.random.seed(args.seed)
+    torch.manual_seed(args.seed)
+    torch.cuda.manual_seed_all(args.seed)
+    torch.cuda.manual_seed(args.seed)
+    torch.backends.cudnn.deterministic=True
+    torch.backends.cudnn.benchmark=False
 
     if args.pretrained_feature_extractor is not None:
         ckpt_dir = Path(args.pretrained_feature_extractor)
@@ -63,7 +70,10 @@ def main():
     print(ModelSummary(model, max_depth=1))
 
     callbacks = []
-    early_stop = EarlyStopping(monitor="transfer/val_acc", mode="max", patience=15)
+    if args.task == "age":
+        early_stop = EarlyStopping(monitor="transfer/val_auc", mode="min", patience=15)
+    else:
+        early_stop = EarlyStopping(monitor="transfer/val_acc", mode="max", patience=15)
     callbacks.append(early_stop)
 
     if args.wandb:

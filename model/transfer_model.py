@@ -54,7 +54,7 @@ class TransferModel(pl.LightningModule):
         elif self.target_type == "binary":
             self.loss_fn = torch.nn.BCEWithLogitsLoss() 
         elif self.target_type == "regression":
-            self.loss_fn = torch.nn.MSELoss()
+            self.loss_fn = torch.nn.L1Loss()
         
         self.eval_fn = evaluate_single
 
