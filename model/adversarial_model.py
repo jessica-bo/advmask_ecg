@@ -1,4 +1,8 @@
-import numpy as np
+"""
+Adapted from @YugeTen 
+Source: https://github.com/YugeTen/adios/blob/main/src/methods/base_adios.py
+"""
+
 import os, sys
 from functools import partial
 from argparse import ArgumentParser
@@ -61,7 +65,7 @@ class AdversarialModel(BaseModel):
         self.save_hyperparameters()
         
     @staticmethod
-    def add_model_specific_args(parent_parser: ArgumentParser) -> ArgumentParser:
+    def add_model_specific_args(parent_parser):
         parent_parser = super(AdversarialModel, AdversarialModel).add_model_specific_args(parent_parser)
         parser = parent_parser.add_argument_group("adversarial")
         parser.add_argument("--adv_lr", type=float, default=0.001)
@@ -69,16 +73,16 @@ class AdversarialModel(BaseModel):
         return parent_parser
 
     @property
-    def automatic_optimization(self) -> bool:
+    def automatic_optimization(self):
         return False
 
     @property
-    def learnable_params(self) -> Dict[str, Any]:
+    def learnable_params(self):
         encoder_learnable_params = super().learnable_params["encoder"]
         adv_learnable_params = list(self.augmenter.parameters()) 
         return {"encoder": encoder_learnable_params, "augmenter": adv_learnable_params}
 
-    def configure_optimizers(self) -> Tuple[List, List]:
+    def configure_optimizers(self):
         optimizer = [torch.optim.Adam(
             self.learnable_params['encoder'],
             lr=self.lr,
@@ -103,7 +107,7 @@ class AdversarialModel(BaseModel):
         for param in self.classifier.parameters():
             param.requires_grad = status
 
-    def classifier_forward(self, batch: Sequence[Any]) -> torch.Tensor:
+    def classifier_forward(self, batch):
         """
         Forward function for classification.
         """
@@ -116,4 +120,3 @@ class AdversarialModel(BaseModel):
         acc = out["acc"]
         auc = out["auc"]
         return class_loss, batch_size, acc, auc
-

@@ -20,9 +20,9 @@ Source: https://github.com/danikiyasseh/CLOCS/blob/master/prepare_miscellaneous.
 
 def evaluate_single(labels_list,outputs_list,classification="single"):
     if classification == "regression":
-        # return 0, r2_score(labels_list, np.squeeze(outputs_list))
         return np.mean(np.abs(labels_list - outputs_list)), np.mean(np.square(labels_list - outputs_list))
-    return calculate_auc(outputs_list,labels_list), calculate_acc(outputs_list,labels_list,classification=classification)
+    else:
+        return calculate_auc(outputs_list,labels_list), calculate_acc(outputs_list,labels_list,classification=classification)
 
 
 def calculate_auc(outputs_list,labels_list):

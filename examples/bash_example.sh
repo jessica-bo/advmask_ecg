@@ -11,6 +11,7 @@ python /home/advaug_ecg/main_pretrain.py \
     --max_epochs 100 \
     --name test_experiment \
     --wandb \
+    --wandby_key your_key
     --project test_project \
     --entity your_account \
     --lr 0.0001 \

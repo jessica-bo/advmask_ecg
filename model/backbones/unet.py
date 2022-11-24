@@ -199,4 +199,3 @@ class re_block(nn.Module):
         x_re = self.seblock(x_re)
         x_out = torch.add(x, x_re)
         return x_out   
-

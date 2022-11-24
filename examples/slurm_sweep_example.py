@@ -1,3 +1,6 @@
+"""
+Script for hyperparameter search using slurm - launches one job for each trial.
+"""
 import os
 
 num_devices = 1
@@ -23,6 +26,7 @@ lr = 0.0001
 adv_lr = 0.0001
 
 wandb_name = "your_account"
+wandb_key = "your_key"
 project_name = "test_project"
 
 for seed in seeds: 
@@ -63,6 +67,7 @@ for seed in seeds:
                                                 --max_epochs 150 \
                                                 --name {}/{} \
                                                 --wandb \
+                                                --wandb_key {} \
                                                 --entity {} \
                                                 --project {} \
                                                 --lr {} \
@@ -76,7 +81,7 @@ for seed in seeds:
                                                 --nmasks {} \
                                                 --simclr_loss_only \
                                                 --positive_pairing {} \n".format(seed, num_devices, sweep_name, hyperparams_name, 
-                                                                                 wandb_name, project_name, lr, adv_lr, batch_size, 
+                                                                                 wandb_key, wandb_name, project_name, lr, adv_lr, batch_size, 
                                                                                  accumulate_grad_batch, embedding_dim, alpha_sparsity, 
                                                                                  ratio, unet_depth, nmasks, positive_pairing))
 

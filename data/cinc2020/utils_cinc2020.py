@@ -338,5 +338,3 @@ def compute_auc(labels: np.ndarray, outputs: np.ndarray) -> Tuple[float, float]:
     macro_auprc = np.nanmean(auprc)
 
     return macro_auroc, macro_auprc
-
-

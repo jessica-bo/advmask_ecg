@@ -9,7 +9,6 @@ from pathlib import Path
 
 from model.base_model import BaseModel
 from model.advmask_model import AdvMaskModel
-from model.advMLP_model import AdvMLPModel
 from model.transfer_model import TransferModel
 from model.style_model import StyleModel
 
@@ -18,7 +17,6 @@ from utils.checkpointer import Checkpointer
 METHODS = {
     "base": BaseModel,
     "advmask": AdvMaskModel,
-    "advmlp": AdvMLPModel,
     "style": StyleModel,
     "transfer": TransferModel,
 }
@@ -48,7 +46,7 @@ def parse_args_pretrain():
     """
     parser = argparse.ArgumentParser()
 
-    parser.add_argument("--method", type=str, default="base", choices=["base", "advmask", "advmlp", "style"])
+    parser.add_argument("--method", type=str, default="base", choices=["base", "advmask"])
     parser.add_argument("--positive_pairing", type=str, default="SimCLR", choices=["SimCLR", "CMSC"])
     parser.add_argument("--seed", type=int, default=1)
     parser.add_argument("--num_devices", type=int, default=1)
@@ -62,9 +60,7 @@ def parse_args_pretrain():
     temp_args, _ = parser.parse_known_args()
     parser = METHODS[temp_args.method].add_model_specific_args(parser)
     temp_args, _ = parser.parse_known_args()
-    print(temp_args)
 
-    # add checkpointer args if logging is enabled
     if temp_args.wandb:
         parser = Checkpointer.add_checkpointer_args(parser)
 
@@ -79,12 +75,12 @@ def parse_args_pretrain():
     if args.name != "none":
         wandb_args["name"] = args.name
 
-    os.environ["WANDB_API_KEY"] = "57578f2c085ea7a785a36d8a38adad6d5e3ee3d5"#args.wandb_key 
+    os.environ["WANDB_API_KEY"] = args.wandb_key 
     os.environ["WANDB_MODE"] = "offline" if args.wandb else "disabled"
     wandb.init(**wandb_args)
 
     return args
-
+    
 
 def parse_args_transfer():
     """
@@ -118,7 +114,7 @@ def parse_args_transfer():
     if args.name != "none":
         wandb_args["name"] = args.name
 
-    os.environ["WANDB_API_KEY"] = "57578f2c085ea7a785a36d8a38adad6d5e3ee3d5"#args.wandb_key
+    os.environ["WANDB_API_KEY"] = args.wandb_key
     os.environ["WANDB_MODE"] = "offline" if args.wandb else "disabled"
     wandb.init(**wandb_args)
 

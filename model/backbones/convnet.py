@@ -38,9 +38,6 @@ class convnet1d(nn.Module):
         self.maxpool = nn.MaxPool1d(2)
         self.trial = trial
         self.name ="convnet"
-        
-        # self.view_modules = nn.ModuleList()
-        # self.view_linear_modules = nn.ModuleList()
 
         self.view_modules = (nn.Sequential(
                              nn.Conv1d(c1,c2,k,s),

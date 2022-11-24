@@ -1,7 +1,6 @@
 from argparse import ArgumentParser
-from tarfile import TarError
 from typing import Any, Dict, List, Optional, Sequence, Tuple
-import os, sys 
+import sys 
 
 import pytorch_lightning as pl
 import torch
@@ -61,7 +60,7 @@ class TransferModel(pl.LightningModule):
         self.save_hyperparameters()
 
     @staticmethod
-    def add_model_specific_args(parent_parser: ArgumentParser) -> ArgumentParser:
+    def add_model_specific_args(parent_parser):
         parser = parent_parser.add_argument_group("linear")
 
         # general train
@@ -76,11 +75,11 @@ class TransferModel(pl.LightningModule):
         parser.add_argument("--project", type=str)
         parser.add_argument("--entity", type=str)
         parser.add_argument("--wandb", action='store_true', default=False)
-        parser.add_argument("--wandb_key", type=str, default="57578f2c085ea7a785a36d8a38adad6d5e3ee3d5")
+        parser.add_argument("--wandb_key", type=str, default="your_key")
 
         return parent_parser
 
-    def configure_optimizers(self) -> Tuple[List, List]:
+    def configure_optimizers(self):
         if self.finetune:
             optimizer = torch.optim.Adam(
                 list(self.classifier.parameters()) + list(self.encoder.parameters()),
@@ -96,7 +95,7 @@ class TransferModel(pl.LightningModule):
 
         return optimizer
 
-    def forward(self, X: torch.tensor) -> Dict[str, Any]:
+    def forward(self, X):
         """
         Performs forward pass of the encoder and the linear layer for evaluation.
         """
@@ -106,8 +105,7 @@ class TransferModel(pl.LightningModule):
         logits = self.classifier(feats)
         return {"logits": logits, "feats": feats}
 
-    def shared_step(
-        self, batch: Tuple) -> Tuple[int, torch.Tensor, torch.Tensor, torch.Tensor]:
+    def shared_step(self, batch):
         """
         Performs operations that are shared between the training nd validation steps.
         """
@@ -122,7 +120,7 @@ class TransferModel(pl.LightningModule):
         
         return batch_size, loss, acc, auc
 
-    def shared_epoch_end(self, outs: List[Dict[str, Any]]):
+    def shared_epoch_end(self, outs):
         """
         Averages the losses and accuracies of all the validation batches.
         """
@@ -132,7 +130,7 @@ class TransferModel(pl.LightningModule):
 
         return loss, acc, auc
 
-    def training_step(self, batch: torch.Tensor, *args, **kwargs) -> torch.Tensor:
+    def training_step(self, batch, *args, **kwargs):
         """
         Performs the training step for transfer.
         """
@@ -149,13 +147,13 @@ class TransferModel(pl.LightningModule):
         }
         return results
 
-    def training_epoch_end(self, outs: List[Dict[str, Any]]):
+    def training_epoch_end(self, outs):
         loss, acc, auc = self.shared_epoch_end(outs)
 
         log = {"transfer/train_loss": loss, "transfer/train_acc": acc, "transfer/train_auc": auc}
         self.log_dict(log, on_epoch=True, sync_dist=True)
 
-    def validation_step(self, batch: torch.Tensor, *args, **kwargs) -> Dict[str, Any]:
+    def validation_step(self, batch, *args, **kwargs):
         """
         Performs the validation step for transfer.
         """
@@ -168,7 +166,7 @@ class TransferModel(pl.LightningModule):
         }
         return results
 
-    def validation_epoch_end(self, outs: List[Dict[str, Any]]):
+    def validation_epoch_end(self, outs):
         val_loss, acc, auc = self.shared_epoch_end(outs)
         print("Finished validation with accuracy {}, AUC {}".format(acc, auc))
 
@@ -176,7 +174,7 @@ class TransferModel(pl.LightningModule):
         self.log_dict(log, sync_dist=True)
 
     @torch.no_grad()
-    def test_step(self, batch: torch.Tensor, *args, **kwargs) -> Dict[str, Any]:
+    def test_step(self, batch, *args, **kwargs):
         """
         Performs the test step for transfer.
         """
@@ -189,7 +187,7 @@ class TransferModel(pl.LightningModule):
         }
         return results
 
-    def test_epoch_end(self, outs: List[Dict[str, Any]]):
+    def test_epoch_end(self, outs):
         test_loss, acc, auc = self.shared_epoch_end(outs)
 
         log = {"transfer/test_loss": test_loss, "transfer/test_acc": acc, "transfer/test_auc": auc}

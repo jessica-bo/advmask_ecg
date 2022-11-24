@@ -1,16 +1,16 @@
+"""
+Adapted from @YugeTen 
+Source: https://github.com/YugeTen/adios/blob/main/src/methods/base_adios.py
+"""
+
 import numpy as np
-import os, sys
-from functools import partial
-from argparse import ArgumentParser
-from typing import Any, Dict, List, Tuple, Callable, Sequence
+import sys
 
 import wandb
 import PIL
 import matplotlib.pyplot as plt
 
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
 
 from scipy.signal import stft, istft
 
@@ -43,6 +43,7 @@ class AdvMaskModel(AdversarialModel):
         alpha_sparsity,
         ratio,
         dropout,
+        binarization,
         accumulate_grad_batches=4,
         fourier=False,
         **kwargs):
@@ -52,10 +53,11 @@ class AdvMaskModel(AdversarialModel):
         self.fourier_scale = 1.1 if positive_pairing=="SimCLR" else 1.2
 
         self.ratio = ratio
-        self.alpha1 = alpha_sparsity
+        self.alpha = alpha_sparsity
         self.unet_depth = unet_depth
         self.nmasks = 12 if self.fourier else nmasks
         self.dropout = dropout
+        self.binarization = int(binarization)
 
         augmentation_model = unet1D(input_dim=12, embedding_dim=512, depth=self.unet_depth, nmasks=self.nmasks, fourier=self.fourier, fourier_scale=self.fourier_scale)
 
@@ -81,7 +83,7 @@ class AdvMaskModel(AdversarialModel):
         self.save_hyperparameters()
         
     @staticmethod
-    def add_model_specific_args(parent_parser: ArgumentParser) -> ArgumentParser:
+    def add_model_specific_args(parent_parser):
         parent_parser = super(AdvMaskModel, AdvMaskModel).add_model_specific_args(parent_parser)
         parser = parent_parser.add_argument_group("advmask")
 
@@ -91,14 +93,15 @@ class AdvMaskModel(AdversarialModel):
         parser.add_argument("--unet_depth", type=int, default=1)
         parser.add_argument("--fourier", action="store_true", default=False)
         parser.add_argument("--dropout", type=float, default=0)
+        parser.add_argument("--binarization", type=str, default="50")
         return parent_parser
 
-    def training_epoch_end(self, outs: List[Dict[str, Any]]):
+    def training_epoch_end(self, outs):
         super().training_epoch_end(outs)
         mask_loss = weighted_mean(outs, "mask_loss", "batch_size")
         self.log_dict({"train_mask_loss": mask_loss}, on_epoch=True, on_step=False, sync_dist=True)
 
-    def training_step(self, batch: Sequence[Any], batch_idx: int): #, optimizer_idx: int):
+    def training_step(self, batch, batch_idx): 
         """
         Training step for adversarial masking pretraining
         """
@@ -144,7 +147,7 @@ class AdvMaskModel(AdversarialModel):
         
         return metrics
 
-    def encoder_forward(self, batch: Sequence[Any], actual_batch_size: int, log_image: bool) -> torch.Tensor:
+    def encoder_forward(self, batch, actual_batch_size, log_image):
         """
         Forward function for encoder (inference model).
         """
@@ -165,16 +168,14 @@ class AdvMaskModel(AdversarialModel):
         elif self.nmasks==12:
             # if N=12, the output is a sigmoid so we just want to keep any values over 0.5 
             thres = 0.5
-            mask = 1. / (1+ torch.exp(-100 * (mask-0.5)))
+            mask = 1. / (1+ torch.exp(-(self.binarization) * (masks-0.5)))
             x_transformed = x_transformed * (1-mask)
 
         else: 
             # randomly choose one mask for each sample in the batch
             chosen_mask = torch.randint(low=0, high=self.nmasks, size=(actual_batch_size,))
             mask = torch.stack([masks[idx, c, ...] for idx, c in enumerate(chosen_mask)], dim=0).unsqueeze(1)
-            # mask = (mask > thres).float().repeat(1, 12, 1)  
-            # mask = 1./(1+torch.exp(-1e2*(mask-0.5)))
-            mask = 1. / (1+ torch.exp(-100 * (mask-0.5)))
+            mask = 1. / (1+ torch.exp(-(self.binarization) * (mask-0.5))).repeat(1, 12, 1)
 
             if self.dropout > 0: #0 is no dropout, 1 is full dropout 
                 dropout_mask = torch.zeros(mask.shape).cuda()
@@ -199,11 +200,11 @@ class AdvMaskModel(AdversarialModel):
             if self.fourier:
                 self.log_stft(x_orig[0], x_transformed[0], targets[0])
             else: 
-                self.log_mask(x_orig[0], x_transformed[0], targets[0], masks[0].squeeze(), thres)
+                self.log_mask(x_orig[0], x_transformed[0], targets[0], mask[0][0].squeeze(), thres)
 
         return nce_loss, masks
 
-    def mask_forward(self, batch: Sequence[Any], actual_batch_size: int, log_image: bool) -> torch.Tensor:
+    def mask_forward(self, batch, actual_batch_size, log_image):
         """
         Forward function for masking model (occlusion model).
         """
@@ -211,36 +212,22 @@ class AdvMaskModel(AdversarialModel):
 
         # compute mask penalty
         mask_penalty = masks.sum([-1]) / masks.shape[-1]
-        mask_loss = (self.alpha1 * (1 / (torch.sin(self.ratio * mask_penalty * np.pi) + 1e-10)).mean(0).sum(0))
-        # print(masks)
-        # mask_loss = torch.norm(masks, 1)
-        # print(mask_loss)
+        mask_loss = (self.alpha * (1 / (torch.sin(self.ratio * mask_penalty * np.pi) + 1e-10)).mean(0).sum(0))
 
         return mask_nce_loss, mask_loss
 
     def log_mask(self, x_orig, x_trans, target, mask, thres):
-        mask = (mask > thres).float()
+        mask_bin = 1 - (mask > thres).float()
         final_mask = 1 - mask
         final_mask = final_mask.detach().cpu().numpy()
 
-        if self.nmasks == 1:
-            fig = plt.figure(figsize=(12, 6))
-            plt.plot(x_trans.squeeze().transpose(0,1).detach().cpu().numpy(), 'red')
+        fig, axs = plt.subplots(2, 1, figsize=(15, 12))
 
-            for j in range(len(final_mask)-1):
-                if final_mask[j] == 0:
-                    plt.axvspan(j, j+1, ymin=0, ymax=1, alpha=0.7, zorder=10)
-        else:
-            fig, axs = plt.subplots(self.nmasks+1, 1, figsize=(15, 12))
-
-            for i in range(self.nmasks):
-                axs[i].plot(x_trans.squeeze().transpose(0,1).detach().cpu().numpy(), 'red')
-                final_mask_i = final_mask[i]
-                
-                for j in range(len(final_mask_i)-1):
-                    if final_mask_i[j] == 0:
-                        axs[i].axvspan(j, j+1, ymin=0, ymax=1, alpha=0.7,zorder=10)
-            axs[-1].plot(x_orig.squeeze().transpose(0,1).detach().cpu().numpy(), 'green')
+        axs[0].plot(x_trans.squeeze().transpose(0,1).detach().cpu().numpy(), 'red')
+        axs[1].plot(x_orig.squeeze().transpose(0,1).detach().cpu().numpy(), 'green')
+        for j in range(len(mask_bin)-1):
+            if mask_bin[j] == 0:
+                axs[1].axvspan(j, j+1, ymin=0, ymax=1, alpha=0.7,zorder=10)
 
         fig.canvas.draw()
         image = PIL.Image.frombytes('RGB', fig.canvas.get_width_height(),fig.canvas.tostring_rgb())
@@ -255,7 +242,7 @@ class AdvMaskModel(AdversarialModel):
     def log_stft(self, x_orig, x_transformed, target):
         fig, axs = plt.subplots(2, 1, figsize=(15, 12))
 
-        axs[0].plot(x_orig.squeeze().transpose(0,1).detach().cpu().numpy(), 'red')
+        axs[0].plot(x_orig.squeeze().transpose(0, 1).detach().cpu().numpy(), 'red')
         axs[1].plot(x_transformed.squeeze().transpose(0,1).detach().cpu().numpy(), 'blue')
 
         fig.canvas.draw()

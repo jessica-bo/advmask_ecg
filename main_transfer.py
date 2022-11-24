@@ -29,6 +29,7 @@ def main():
     args = parse_args_transfer()
     seed_everything(args.seed)
     print(" Beginning transfer main() with seed {} and arguments \n {}: \n".format(args.seed, args))
+    
     np.random.seed(args.seed)
     torch.manual_seed(args.seed)
     torch.cuda.manual_seed_all(args.seed)
@@ -45,8 +46,8 @@ def main():
             method_args = json.load(f)
         
         method = method_args["method"] 
-        original_model = METHODS[method](n_classes=NUM_CLASSES["cinc2021"], 
-                                         target_type=NUM_CLASSES["cinc2021"], 
+        original_model = METHODS[method](n_classes=NUM_CLASSES[method_args["dataset"]], 
+                                         target_type=NUM_CLASSES[method_args["dataset"]], 
                                          **(method_args))
         original_model.load_state_dict(torch.load(ckpt_path)['state_dict'])
         backbone = original_model.encoder

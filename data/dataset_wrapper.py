@@ -59,7 +59,6 @@ class DatasetWrapper(Dataset):
                 combined_sample[:,:,0] = self.normalize(sample)
                 combined_sample[:,:,1] = self.transform(sample)
             else: 
-                # CMLC, CMSMLC, PCLR not implemented
                 raise NotImplementedError
             
             return combined_sample.float(), label

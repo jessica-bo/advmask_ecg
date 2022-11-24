@@ -47,30 +47,5 @@ def simclr_loss_fn(latent_embeddings, positive_pairing="SimCLR", temperature=0.1
         loss += loss_term1 + loss_term2
         loss_terms = 2
 
-    # elif positive_pairing in ['CMSC','CMLC','CMSMLC']: #ours #CMSMLC = positive examples are same instance and same patient
-    #     # triu_elements = sim_matrix_exp[rows1,cols1]
-    #     # tril_elements = sim_matrix_exp[rows2,cols2]
-    #     diag_elements = torch.diag(sim_matrix_exp)
-        
-    #     triu_sum = torch.sum(sim_matrix_exp,1)
-    #     tril_sum = torch.sum(sim_matrix_exp,0)
-        
-    #     loss_diag1 = -torch.mean(torch.log(diag_elements/triu_sum))
-    #     loss_diag2 = -torch.mean(torch.log(diag_elements/tril_sum))
-        
-    #     # loss_triu = -torch.mean(torch.log(triu_elements/triu_sum[rows1]))
-    #     # loss_tril = -torch.mean(torch.log(tril_elements/tril_sum[cols2]))
-        
-    #     loss = loss_diag1 + loss_diag2
-    #     loss_terms = 2
-
-    #     # if len(rows1) > 0:
-    #     #     loss += loss_triu #technically need to add 1 more term for symmetry
-    #     #     loss_terms += 1
-        
-    #     # if len(rows2) > 0:
-    #     #     loss += loss_tril #technically need to add 1 more term for symmetry
-    #     #     loss_terms += 1
-        
     loss = loss/(loss_terms)
     return loss

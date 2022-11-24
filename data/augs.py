@@ -4,18 +4,13 @@ Source: https://github.com/Jwoo5/fairseq-signals/blob/master/fairseq_signals/dat
 
 """
 
-import random
-import os
 import numpy as np
 import math
 
 import torch 
-import torchvision
 from torchvision import transforms
 
-import scipy
 from scipy.spatial.transform import Rotation as R
-
 from scipy.signal import stft, istft
 
 class ToTensor1D:
@@ -226,7 +221,6 @@ class RandomMask(object):
         return new_sample
 
 class RandomFourier(object):
-    
     def __call__(self, sample):
         _, _, Zxx = stft(sample, 500, nperseg=999)
         np_mask = np.random.beta(5, 2, size=Zxx.shape) 
@@ -237,7 +231,6 @@ class RandomFourier(object):
         return new_sample
 
 class PeakMask(object):
-
     def __call__(self, sample):
         mean = np.mean(sample)
         avg_leads = np.mean(sample, axis=0)
@@ -250,16 +243,14 @@ class PeakMask(object):
 
         return new_sample
 
-
 class ThreeKGTransform:
     def __init__(
         self,
-        angle=45/90,
-        scale=1.5-0.75,
+        angle=45,
+        scale=1.5,
     ):
-        # Assuming that inputs are between 0-1
-        self.angle = angle*90
-        self.scale = scale + 0.75
+        self.angle = angle
+        self.scale = scale 
     
     def _get_other_four_leads(self, I, II):
         """calculate other four leads (III, aVR, aVL, aVF) from the first two leads (I, II)"""
@@ -305,7 +296,6 @@ class ThreeKGTransform:
         ecg[other_leads] = self._get_other_four_leads(res[0], res[1])
         
         return ecg
-
 
 class CollatedTransform:
     """Adds callable base class to implement different transformation pipelines."""
@@ -378,44 +368,3 @@ class CollatedTransform:
 
     def __repr__(self):
         return str(self.transform)
-
-
-"""
-Adversarial verion of baseline augmentations -- instead of initializing the augmention parameters at the start, 
-they are generated adversarially and passed in on each training step. 
-"""
-
-class AdvAugmentation: 
-    def __init__(self, arg_name):
-        self.augmentation = ADVAUGS[arg_name]
-        
-    def __call__(self, batch, param_arr):
-        new_batch = batch.clone()
-        for i in range(len(batch)):
-            params = param_arr[i].detach().cpu().numpy()
-            transformed = self.augmentation(*params)(batch[i].detach().cpu().numpy())
-            new_batch[i] = torch.tensor(transformed, requires_grad=True)
-            
-        return new_batch
-
-ADVAUGS = {
-    "gaussian": GaussianNoise,
-    "wander": BaselineWander,
-    "shift": BaselineShift,
-    "powerline": PowerlineNoise,
-    "emg": EMGNoise,
-    "mask": RandomMask,
-    "blockmask": RandomBlockMask,
-    "threeKG": ThreeKGTransform,
-}
-
-ADVAUG_OUTPUTS = {
-    "gaussian": 1,
-    "wander": 4,
-    "shift": 3,
-    "powerline": 2,
-    "emg": 2,
-    "mask": 1,
-    "blockmask": 1,
-    "threeKG": 2,
-}

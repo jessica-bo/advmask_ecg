@@ -6,10 +6,10 @@ Source: https://github.com/danikiyasseh/loading-physiological-data/blob/master/l
 import os
 import numpy as np
 import pandas as pd
-import pickle
 from scipy.signal import resample
 from sklearn.preprocessing import LabelEncoder
 from tqdm import tqdm
+
 enc = LabelEncoder()
 dataset = 'chapman'
 basepath = './raw'
@@ -21,7 +21,8 @@ dates.name = 'Dates'
 dates = pd.to_datetime(dates)
 database_with_dates = pd.concat((database,dates),1)
 
-task = "age"
+# Modify output label as "" (arrhythymia classification), "gender" (gender classification), "age" (age regression)
+task = "gender"
 options = {"age": "PatientAge", "gender": "Gender", "": "Rhythm"}
 
 """ Combine Rhythm Labels """
@@ -44,15 +45,13 @@ def combine_dates(date):
     return new_date
 database_with_dates['Dates'] = database_with_dates['Dates'].apply(combine_dates)
 
-
-#%%
 """ Patients in Each Task and Phase """
-phases = ['train','val'] #,'test']
-phase_fractions = [0.8, 0.1] #, 0.1]
-seed = 10
+phases = ['train','val','test']
+phase_fractions = [0.8, 0.1, 0.1]
+seed = 42
 phase_fractions_dict = dict(zip(phases,phase_fractions))
 term = 'All Terms'
-reduce_dataset = 0.1
+reduce_dataset = 0.02 # fraction of dataset to create
 
 term_phase_patients = dict()
 term_patients = database_with_dates['FileName'][database_with_dates['Dates'] == "All Terms"]
@@ -105,7 +104,6 @@ for phase in phases:
     pids[phase] = np.array(current_pids)
 
 
-#%%
 """ Less Computationally Intensive NaN Removal Process """
 bad_indices = dict()
 for phase in phases:
@@ -118,7 +116,6 @@ for phase in phases:
     outputs_dict[phase]= np.delete(outputs_dict[phase],bad_indices[phase],0)
     pids[phase] = np.delete(pids[phase],bad_indices[phase],0)
     
-#%%
 def save_final_frames_and_labels(frames_dict,labels_dict,save_path):
     frames_dict['train'].dump(os.path.join(save_path, "{}X_train.npy".format(reduce_dataset)), protocol=4)
     frames_dict['val'].dump(os.path.join(save_path, "{}X_val.npy".format(reduce_dataset)), protocol=4)

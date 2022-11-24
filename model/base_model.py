@@ -4,18 +4,15 @@ Source: https://github.com/YugeTen/adios/blob/main/src/methods/base.py
         https://github.com/YugeTen/adios/blob/main/src/methods/simclr.py
 """
 
-from argparse import ArgumentParser
-from typing import Any, Dict, List, Sequence
 import sys
 
 import pytorch_lightning as pl
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 
 sys.path.append('../utils')
 from utils.losses import simclr_loss_fn
-from utils.metrics import weighted_mean, evaluate_single
+from utils.metrics import weighted_mean
 
 sys.path.append('../data')
 from data.cinc2021.utils_cinc2021 import evaluate_scores
@@ -61,17 +58,13 @@ class BaseModel(pl.LightningModule):
         )
         self.classifier = nn.Linear(self.encoder.embedding_dim, n_classes)
 
-        if target_type == 'multilabel':
-            self.loss_fn = torch.nn.BCEWithLogitsLoss()
-            self.eval_fn = evaluate_12ECG_score#evaluate_scores
-        elif target_type == "single":
-            self.loss_fn = F.cross_entropy
-            self.eval_fn = evaluate_single
+        self.loss_fn = torch.nn.BCEWithLogitsLoss()
+        self.eval_fn = evaluate_12ECG_score #evaluate_scores
     
         self.save_hyperparameters()
 
     @staticmethod
-    def add_model_specific_args(parent_parser: ArgumentParser) -> ArgumentParser:
+    def add_model_specific_args(parent_parser):
         parser = parent_parser.add_argument_group("base")
 
         # general train
@@ -87,7 +80,7 @@ class BaseModel(pl.LightningModule):
         parser.add_argument("--project", type=str)
         parser.add_argument("--entity", type=str)
         parser.add_argument("--wandb", action='store_true', default=False)
-        parser.add_argument("--wandb_key", type=str, default="57578f2c085ea7a785a36d8a38adad6d5e3ee3d5")
+        parser.add_argument("--wandb_key", type=str, default="your_key")
 
         parser.add_argument("--encoder_name", type=str, default='resnet')
         parser.add_argument("--output_dim", type=int, default=128)
@@ -97,7 +90,7 @@ class BaseModel(pl.LightningModule):
         return parent_parser
 
     @property
-    def learnable_params(self) -> Dict[str, Any]:
+    def learnable_params(self):
         learnable_params = list(self.encoder.parameters()) + list(self.projector.parameters()) + list(self.classifier.parameters())
         return {"encoder": learnable_params}
 
@@ -115,13 +108,12 @@ class BaseModel(pl.LightningModule):
         z = self.projector(feats)
         return {"logits": logits, "feats": feats, "z": z}
         
-    def shared_step(self, X: torch.Tensor, targets: torch.Tensor) -> Dict:
+    def shared_step(self, X, targets):
         batch_size = X.size(0)
-
         out = self.forward(X)
         logits, feats, z = out["logits"], out["feats"], out["z"]     
 
-        targets = targets.type(torch.float) if self.target_type == "multilabel" else targets
+        targets = targets.type(torch.float) 
         class_loss = self.loss_fn(logits + 1e-10, targets.type(torch.float))
 
         auc, acc = self.eval_fn(targets.detach().cpu().numpy(), logits.detach().cpu().numpy())
@@ -136,7 +128,7 @@ class BaseModel(pl.LightningModule):
             "auc": auc,
         }
 
-    def training_step(self, batch: Sequence[Any], batch_idx: int) -> torch.Tensor:
+    def training_step(self, batch, batch_idx):
         """Training step for SimCLR and supervised SimCLR reusing BaseModel training step.
 
         Args:
@@ -173,11 +165,12 @@ class BaseModel(pl.LightningModule):
 
         return metrics
 
-    def training_epoch_end(self, outs: List[Dict[str, Any]]):
+    def training_epoch_end(self, outs):
         class_loss = weighted_mean(outs, "class_loss", "batch_size")
         acc = weighted_mean(outs, "acc", "batch_size")
         auc = weighted_mean(outs, "auc", "batch_size")
         nce_loss = weighted_mean(outs, "nce_loss", "batch_size")
+        print("Finished training epoch with NCE loss {}".format(nce_loss))
         
         metrics = {"train_class_loss": class_loss, 
                    "train_acc": acc, 
@@ -200,7 +193,7 @@ class BaseModel(pl.LightningModule):
 
         return metrics
 
-    def validation_epoch_end(self, outs: List[Dict[str, Any]]):
+    def validation_epoch_end(self, outs):
         """Averages the losses and accuracies of all the validation batches.
         This is needed because the last batch can be smaller than the others,
         slightly skewing the metrics.

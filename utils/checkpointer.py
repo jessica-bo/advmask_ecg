@@ -32,12 +32,12 @@ class Checkpointer(Callback):
         self.keep_previous_checkpoints = keep_previous_checkpoints
 
     @staticmethod
-    def add_checkpointer_args(parent_parser: ArgumentParser):
+    def add_checkpointer_args(parent_parser):
         parser = parent_parser.add_argument_group("checkpointer")
         parser.add_argument("--checkpoint_frequency", default=1, type=int)
         return parent_parser
 
-    def initial_setup(self, trainer: pl.Trainer):
+    def initial_setup(self, trainer):
         self.path = self.logdir
         self.last_ckpt: Optional[str] = None
 
@@ -45,13 +45,13 @@ class Checkpointer(Callback):
         if trainer.is_global_zero:
             os.makedirs(self.path, exist_ok=True)
 
-    def save_args(self, trainer: pl.Trainer):
+    def save_args(self, trainer):
         if trainer.is_global_zero:
             args = vars(self.args)
             json_path = os.path.join(self.path, "args.json")
             json.dump(args, open(json_path, "w"), default=lambda o: "<not serializable>")
 
-    def save(self, trainer: pl.Trainer):
+    def save(self, trainer):
         if trainer.is_global_zero and not trainer.sanity_checking:
             epoch = trainer.current_epoch  # type: ignore
             ckpt_path = os.path.join(self.path, "model-{}.ckpt".format(epoch))
@@ -61,11 +61,11 @@ class Checkpointer(Callback):
                 os.remove(self.last_ckpt)
             self.last_ckpt = ckpt_path
 
-    def on_train_start(self, trainer: pl.Trainer, _):
+    def on_train_start(self, trainer, _):
         self.initial_setup(trainer)
         self.save_args(trainer)
 
-    def on_validation_end(self, trainer: pl.Trainer, _):
+    def on_validation_end(self, trainer, _):
         epoch = trainer.current_epoch  # type: ignore
         if epoch % self.frequency == 0:
             self.save(trainer)

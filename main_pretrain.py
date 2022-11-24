@@ -41,7 +41,6 @@ def main():
                         **args.__dict__)
     print(" Loaded {} model.".format(args.method))
 
-
     data_module = ECGDataModule(do_test=False,
                                **args.__dict__)
     print(" Loaded datamodule with dataset {}.".format(args.dataset))
@@ -92,6 +91,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
-
