@@ -1,5 +1,5 @@
 # advmask_ecg
-Adversarial masking for self-supervised pretraining of 12-lead ECGs. 
+[Pretraining ECG Data with Adversarial Masking Improves Model Generalizability for Data-Scarce Tasks](https://arxiv.org/abs/2211.07889) @ ML4H 2022
 
 
 We adapt parts of our code from the following sources: 
